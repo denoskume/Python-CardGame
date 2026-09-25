@@ -1,0 +1,21 @@
+# Virtual environments
+.venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# IDE / notebook metadata
+.vscode/
+.ipynb_checkpoints/
+
+# Runtime data
+data/history.json
+
+# Windows / OS metadata
+*:Zone.Identifier
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
