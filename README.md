@@ -360,7 +360,7 @@ main.py
 ## Project Structure
 
 ```text
-CardGame/
+Python-CardGame/
 ├── src/
 │   ├── assets/
 │   ├── bet.py
@@ -387,7 +387,7 @@ CardGame/
 From the repository root:
 
 ```bash
-cd Projects/CardGame
+git clone https://github.com/denoskume/Python-CardGame.git\ncd Python-CardGame
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
@@ -409,7 +409,7 @@ The only direct package dependency is Pygame.
 
 ## Run
 
-From `Projects/CardGame/`:
+From `Projects/Python-CardGame/`:
 
 ```bash
 python src/main.py
