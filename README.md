@@ -387,7 +387,8 @@ Python-CardGame/
 From the repository root:
 
 ```bash
-git clone https://github.com/denoskume/Python-CardGame.git\ncd Python-CardGame
+git clone https://github.com/denoskume/Python-CardGame.git
+cd Python-CardGame
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
@@ -409,7 +410,7 @@ The only direct package dependency is Pygame.
 
 ## Run
 
-From `Projects/Python-CardGame/`:
+From the repository root:
 
 ```bash
 python src/main.py
