@@ -1,0 +1,28 @@
+name: Import large source files
+
+on:
+  push:
+    paths:
+      - ".github/workflows/import-large-files.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download large files from academic source
+        run: |
+          mkdir -p docs
+          curl -L --fail "https://raw.githubusercontent.com/denoskume/Master_SIP_EC-Nantes/main/Projects/CardGame/docs/CardGame_Report.pdf" -o docs/CardGame_Report.pdf
+          curl -L --fail "https://raw.githubusercontent.com/denoskume/Master_SIP_EC-Nantes/main/Projects/CardGame/docs/cardgame_demo.gif" -o docs/cardgame_demo.gif
+      - name: Commit imported files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/CardGame_Report.pdf docs/cardgame_demo.gif
+          git commit -m "Restore large CardGame files" || exit 0
+          git push
