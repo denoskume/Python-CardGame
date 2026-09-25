@@ -1,1 +1,5 @@
-pygame
+# CardGame runtime dependency
+# Python standard-library modules used by the project
+# (os, pathlib, random, time, json) do not require pip installation.
+
+pygame>=2.5,<3.0
