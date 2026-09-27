@@ -1,13 +1,10 @@
-<p align="left">
-  <img src="https://www.ec-nantes.fr/medias/photo/logocn-rvb_1648479844750-png?ID_FICHE=178994&amp;INLINE=FALSE" alt="Centrale Nantes" height="64">
-  &nbsp;&nbsp;&nbsp;&nbsp;
-  <strong>MSc. CORO DASSIP</strong>
+<p>
+  <img align="left" src="https://www.ec-nantes.fr/medias/photo/logocn-rvb_1648479844750-png?ID_FICHE=178994&amp;INLINE=FALSE" alt="Centrale Nantes" height="64">
 </p>
+<p align="right"><strong>MSc. CORO DASSIP</strong></p>
+<br clear="both">
 
-<h1 align="center">
-  <img src="https://img.shields.io/badge/Python-3776AB?style=for-the-badge&amp;logo=python&amp;logoColor=white" alt="Python" height="32">
-  &nbsp; CardGame
-</h1>
+<h1 align="center">Python CardGame</h1>
 
 <p align="center"><strong>Rouge Gagne, Noir Perd</strong></p>
 
