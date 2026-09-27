@@ -441,6 +441,4 @@ The application opens a **960 × 630** window and targets **60 FPS**.
 ## Academic Context
 
 **Participants:** Denos Kume, Sena FUKABE  
-**Supervisor:** Mira Rizkallah  
-**Program:** M1 CORO DASSIP — École Centrale de Nantes  
-**Academic Year:** 2025–2026
+
