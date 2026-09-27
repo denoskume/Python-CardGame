@@ -438,7 +438,8 @@ The application opens a **960 × 630** window and targets **60 FPS**.
 
 ---
 
-## Academic Context
+## Participants
 
-**Participants:** Denos Kume, Sena FUKABE  
+Denos Kume  
+Sena FUKABE
 
