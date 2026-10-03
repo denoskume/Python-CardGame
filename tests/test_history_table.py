@@ -24,10 +24,11 @@ class HistoryTableTests(unittest.TestCase):
         self.assertEqual(values, ("5", "Paul", "20$", "LOSE", "10$", "-20$"))
         self.assertEqual(history_table.result_kind(row), "negative")
 
-    def test_dashboard_uses_history_table(self):
-        source = Path("src/dashboard.py").read_text(encoding="utf-8")
-        self.assertIn("history_table", source)
-        self.assertIn('"Last attempts (all sessions combined):"', source)
+    def test_main_installs_history_table(self):
+        source = Path("src/main.py").read_text(encoding="utf-8")
+        self.assertIn("history_table.install(db)", source)
+        module = Path("src/history_table.py").read_text(encoding="utf-8")
+        self.assertIn('"Last attempts (all sessions combined):"', module)
 
 
 if __name__ == "__main__":
