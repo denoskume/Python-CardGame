@@ -4,6 +4,7 @@ This module configures platform-specific audio, initializes Pygame,
 creates the domain objects, and runs the event/update/render loop.
 """
 
+import asyncio
 import os
 from pathlib import Path
 
@@ -20,7 +21,8 @@ import bet as bt
 import game as gm
 import dashboard as db
 
-def main():
+
+async def main() -> None:
     """Initialize Pygame, create game objects, and run the main loop."""
     pygame.mixer.pre_init(44100, -16, 2, 512)
     pygame.init()
@@ -67,13 +69,11 @@ def main():
         card_game.update()
         card_game.draw()
         pygame.display.flip()
-        clock.tick(60) 
+        clock.tick(60)
+        await asyncio.sleep(0)
 
     pygame.quit()
 
+
 if __name__ == "__main__":
-    main()
-
-
-
-
+    asyncio.run(main())
