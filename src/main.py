@@ -15,6 +15,7 @@ import user as us
 import bet as bt
 import game as gm
 import dashboard as db
+import bet_avatar_return
 import desktop_menu
 import menu_input
 import player_profiles
@@ -24,6 +25,7 @@ import welcome_balance_ui
 
 desktop_menu.install(db)
 welcome_balance_ui.install(db)
+bet_avatar_return.install(db, gm)
 menu_input.install(gm)
 web_history.install(gm)
 player_profiles.install(gm)
