@@ -24,6 +24,13 @@ class ResponsiveLayoutContractTests(unittest.TestCase):
         for marker in ("390", "844", "768", "1024", "1440"):
             self.assertIn(marker, source)
 
+    def test_menu_title_has_reserved_space_above_panel(self):
+        source = Path("src/dashboard.py").read_text(encoding="utf-8")
+        self.assertIn("title_y =", source)
+        self.assertIn("title_clearance =", source)
+        self.assertIn("panel_top = max(", source)
+        self.assertIn("title_y + title_clearance", source)
+
 
 if __name__ == "__main__":
     unittest.main()
