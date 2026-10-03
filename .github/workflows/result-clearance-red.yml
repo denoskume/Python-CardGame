@@ -1,0 +1,13 @@
+name: Verify Result Clearance RED
+on:
+  push:
+    branches: [fix/result-card-button-clearance]
+jobs:
+  red:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m unittest tests.test_responsive_layout.ResponsiveLayoutContractTests.test_result_screen_reserves_clearance_between_cards_and_buttons -v
