@@ -17,6 +17,7 @@ import game as gm
 import dashboard as db
 import bet_avatar_return
 import desktop_menu
+import dynamic_difficulty
 import menu_input
 import player_profiles
 import web_history
@@ -29,6 +30,7 @@ bet_avatar_return.install(db, gm)
 menu_input.install(gm)
 web_history.install(gm)
 player_profiles.install(gm)
+dynamic_difficulty.install(gm)
 
 
 def _browser_viewport():
@@ -67,7 +69,7 @@ async def main() -> None:
     clock = pygame.time.Clock()
 
     player = us.User(nickname="", avatar_index=0, initial_balance=30)
-    betting = bt.Bet(min_amount=10, max_amount=100, amount=10, turbo=1)
+    betting = bt.Bet(min_amount=10, max_amount=1000, amount=10, turbo=1)
     card_game = gm.CardGame(screen, player, betting)
 
     running = True
