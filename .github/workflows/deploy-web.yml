@@ -2,7 +2,7 @@ name: Deploy Python CardGame to GitHub Pages
 
 on:
   push:
-    branches: [main, feat/responsive-layout]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
