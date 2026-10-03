@@ -210,15 +210,18 @@ def draw_menu(game):
     _sync_card_geometry(game)
     cfg = _layout(game)
     game.screen.fill(game.DARK)
-    _draw_center_text(game, "GAME MENU", cfg["margin"] + 28, game.font_title, game.WHITE)
+    title_y = cfg["margin"] + max(24, game.font_title.get_height() // 2)
+    title_clearance = game.font_title.get_height() // 2 + 16
+    _draw_center_text(game, "GAME MENU", title_y, game.font_title, game.WHITE)
     width = min(game.w - 2 * cfg["margin"], 760)
-    panel_top = 90 if game.h >= 600 else 62
+    default_panel_top = 90 if game.h >= 600 else 62
+    panel_top = max(default_panel_top, title_y + title_clearance)
     panel = pygame.Rect((game.w - width) // 2, panel_top, width, game.h - panel_top - cfg["margin"])
     pygame.draw.rect(game.screen, (15, 15, 15), panel, border_radius=14)
     pygame.draw.rect(game.screen, game.LIGHT, panel, 2, border_radius=14)
 
     input_width = min(300, game.w - 2 * cfg["margin"] - 30)
-    input_rect = pygame.Rect(game.w // 2 - input_width // 2, 155, input_width, cfg["min_touch"])
+    input_rect = pygame.Rect(game.w // 2 - input_width // 2, max(155, panel.y + 54), input_width, cfg["min_touch"])
     pygame.draw.rect(game.screen, game.WHITE if game.active_input else game.GREY, input_rect, border_radius=8)
     pygame.draw.rect(game.screen, game.BLACK, input_rect, 2, border_radius=8)
     value = game.user.nickname if game.user.nickname else "Tap here to type..."
