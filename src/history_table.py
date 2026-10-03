@@ -2,81 +2,61 @@
 
 import pygame
 
-COLUMNS = ("#", "Player", "Occ.", "Bet", "Result", "Cash", "Goal")
+COLUMNS = ("#", "Player", "Bet", "Result", "Cash", "Goal")
 
 
-def _player_key(name):
-    return str(name or "-").strip().casefold()
-
-
-def summarize_players(history, limit=5):
-    """Return one summary per player, ordered by most recent activity."""
-    summaries = {}
-    latest_order = []
-
-    for row in history:
-        player = str(row.get("player", "-") or "-").strip() or "-"
-        key = _player_key(player)
-        if key not in summaries:
-            summaries[key] = {
-                "player": player,
-                "occurrences": 0,
-                "total_bet": 0,
-                "wins": 0,
-                "losses": 0,
-                "cash": 0,
-                "goal": 0,
-            }
-        summary = summaries[key]
-        summary["player"] = player
-        summary["occurrences"] += 1
-        summary["total_bet"] += int(row.get("bet", 0))
-        result = row.get("result", "")
-        stake = int(row.get("stake", row.get("bet", 0)))
-        if result == "WIN":
-            summary["wins"] += 1
-            summary["goal"] += stake
-        elif result == "LOSE":
-            summary["losses"] += 1
-            summary["goal"] -= stake
-        summary["cash"] = int(row.get("balance_after", summary["cash"]))
-
-        if key in latest_order:
-            latest_order.remove(key)
-        latest_order.append(key)
-
-    return [summaries[key] for key in reversed(latest_order[-limit:])]
-
-
-def result_kind(summary):
-    if summary.get("wins", 0) > summary.get("losses", 0):
-        return "positive"
-    if summary.get("wins", 0) < summary.get("losses", 0):
-        return "negative"
-    return "neutral"
-
-
-def row_values(summary, rank):
+def _event_key(row):
+    """Build a stable identity for an exact recorded round."""
     return (
-        str(rank),
-        str(summary.get("player", "-") or "-"),
-        str(int(summary.get("occurrences", 0))),
-        f"{int(summary.get('total_bet', 0))}$",
-        f"{int(summary.get('wins', 0))}W / {int(summary.get('losses', 0))}L",
-        f"{int(summary.get('cash', 0))}$",
-        f"{int(summary.get('goal', 0)):+d}$",
+        row.get("round"),
+        str(row.get("player", "-") or "-").strip().casefold(),
+        int(row.get("bet", 0)),
+        int(row.get("stake", row.get("bet", 0))),
+        str(row.get("result", "")),
+        int(row.get("balance_after", 0)),
     )
 
 
-def _cell_color(game, column, value, summary):
+def latest_events(history, limit=5):
+    """Return the latest unique recorded rounds, newest first."""
+    seen = set()
+    rows = []
+    for row in reversed(history):
+        key = _event_key(row)
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append(row)
+        if len(rows) >= limit:
+            break
+    return rows
+
+
+def row_values(row):
+    result = str(row.get("result", ""))
+    stake = int(row.get("stake", row.get("bet", 0)))
+    goal = stake if result == "WIN" else -stake if result == "LOSE" else 0
+    return (
+        str(row.get("round", "?")),
+        str(row.get("player", "-") or "-"),
+        f"{int(row.get('bet', 0))}$",
+        result,
+        f"{int(row.get('balance_after', 0))}$",
+        f"{goal:+d}$",
+    )
+
+
+def _cell_color(game, column, row):
     if column == "Result":
-        kind = result_kind(summary)
-        return game.GREEN if kind == "positive" else game.RED if kind == "negative" else game.LIGHT
+        result = str(row.get("result", ""))
+        return game.GREEN if result == "WIN" else game.RED if result == "LOSE" else game.LIGHT
     if column == "Cash":
-        cash = int(summary.get("cash", 0))
+        cash = int(row.get("balance_after", 0))
         return game.GREEN if cash > 0 else game.RED if cash < 0 else game.LIGHT
     if column == "Goal":
-        goal = int(summary.get("goal", 0))
+        result = str(row.get("result", ""))
+        stake = int(row.get("stake", row.get("bet", 0)))
+        goal = stake if result == "WIN" else -stake if result == "LOSE" else 0
         return game.GREEN if goal > 0 else game.RED if goal < 0 else game.LIGHT
     return game.LIGHT
 
@@ -92,7 +72,7 @@ def install(dashboard):
         dashboard._draw_center_text(game, "Tap or click to continue", game.h * 0.27, game.font_norm, game.LIGHT)
 
         width = min(game.w - 2 * cfg["margin"], 820)
-        panel_h = min(270, int(game.h * 0.40))
+        panel_h = min(245, int(game.h * 0.37))
         panel = pygame.Rect((game.w - width) // 2, int(game.h * 0.34), width, panel_h)
         pygame.draw.rect(game.screen, (15, 15, 15), panel, border_radius=12)
         pygame.draw.rect(game.screen, game.LIGHT, panel, 2, border_radius=12)
@@ -105,12 +85,12 @@ def install(dashboard):
             game.screen.blit(msg, (panel.x + 14, panel.y + 48))
             return
 
-        rows = summarize_players(game.global_history, limit=5)
+        rows = latest_events(game.global_history, limit=5)
         table_x = panel.x + 12
         table_y = panel.y + 44
         table_w = panel.width - 24
         row_h = max(28, int(game.font_small.get_height() * 1.55))
-        col_fracs = (0.06, 0.20, 0.10, 0.13, 0.20, 0.15, 0.16)
+        col_fracs = (0.08, 0.22, 0.14, 0.18, 0.19, 0.19)
         col_widths = [int(table_w * f) for f in col_fracs]
         col_widths[-1] = table_w - sum(col_widths[:-1])
 
@@ -123,15 +103,15 @@ def install(dashboard):
             game.screen.blit(surf, surf.get_rect(center=rect.center))
             x += col_widths[idx]
 
-        for r_index, summary in enumerate(rows, start=1):
-            values = row_values(summary, r_index)
+        for r_index, row in enumerate(rows, start=1):
+            values = row_values(row)
             y = table_y + row_h * r_index
             x = table_x
             for c_index, (heading, value) in enumerate(zip(COLUMNS, values)):
                 rect = pygame.Rect(x, y, col_widths[c_index], row_h)
                 pygame.draw.rect(game.screen, (10, 12, 22), rect)
                 pygame.draw.rect(game.screen, (45, 55, 85), rect, 1)
-                color = _cell_color(game, heading, value, summary)
+                color = _cell_color(game, heading, row)
                 surf = game.font_small.render(value, True, color)
                 game.screen.blit(surf, surf.get_rect(center=rect.center))
                 x += col_widths[c_index]
