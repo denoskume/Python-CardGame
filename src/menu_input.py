@@ -34,15 +34,15 @@ def _install_browser_key_capture(field):
     try:
         import platform
 
-        if str(field.dataset.cardgameKeys or "") == "1":
+        if str(field.getAttribute("data-cardgame-keys") or "") == "1":
             return
 
         platform.window.eval(
             """
             (() => {
               const field = document.getElementById('cardgame-name-input');
-              if (!field || field.dataset.cardgameKeys === '1') return;
-              field.dataset.cardgameKeys = '1';
+              if (!field || field.getAttribute('data-cardgame-keys') === '1') return;
+              field.setAttribute('data-cardgame-keys', '1');
 
               field.addEventListener("keydown", (event) => {
                 if (document.activeElement !== field) return;
@@ -108,6 +108,7 @@ def _ensure_browser_field(game):
             field.spellcheck = False
             field.value = game.user.nickname
             field.setAttribute("maxlength", str(game.player_name_max_len))
+            field.setAttribute("onkeydown", "event.stopPropagation();")
             field.setAttribute("onkeyup", "event.stopPropagation();")
             field.setAttribute("onkeypress", "event.stopPropagation();")
             field.setAttribute("oninput", "event.stopPropagation();")

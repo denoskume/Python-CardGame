@@ -5,6 +5,18 @@ import pygame
 COLUMNS = ("#", "Player", "Bet", "Result", "Cash", "Goal")
 
 
+def panel_height(viewport_height, panel_y, margin):
+    """Use available vertical space while keeping a sensible desktop cap."""
+    available = max(180, viewport_height - panel_y - margin)
+    return min(330, available)
+
+
+def visible_row_limit(panel_h, row_h, table_offset=44, bottom_padding=12):
+    """Return the maximum number of data rows that fit below the table header."""
+    available = max(0, panel_h - table_offset - bottom_padding - row_h)
+    return max(1, available // row_h)
+
+
 def _event_key(row):
     """Build a stable identity for an exact recorded round."""
     return (
@@ -22,7 +34,7 @@ def _player_key(row):
 
 
 def aggregate_players(history, limit=5):
-    """Aggregate every round for each player and return the five most recent players."""
+    """Aggregate every round for each player and return the most recent players."""
     unique_events = []
     seen_events = set()
     for row in history:
@@ -92,7 +104,7 @@ def _cell_color(game, column, row):
 
 
 def install(dashboard):
-    """Replace the start-screen history list with a compact colored table."""
+    """Replace the start-screen history list with a responsive colored table."""
     def draw_start_screen(game):
         dashboard._sync_card_geometry(game)
         cfg = dashboard._layout(game)
@@ -102,8 +114,9 @@ def install(dashboard):
         dashboard._draw_center_text(game, "Tap or click to continue", game.h * 0.27, game.font_norm, game.LIGHT)
 
         width = min(game.w - 2 * cfg["margin"], 820)
-        panel_h = min(245, int(game.h * 0.37))
-        panel = pygame.Rect((game.w - width) // 2, int(game.h * 0.34), width, panel_h)
+        panel_y = int(game.h * 0.34)
+        panel_h = panel_height(game.h, panel_y, cfg["margin"])
+        panel = pygame.Rect((game.w - width) // 2, panel_y, width, panel_h)
         pygame.draw.rect(game.screen, (15, 15, 15), panel, border_radius=12)
         pygame.draw.rect(game.screen, game.LIGHT, panel, 2, border_radius=12)
 
@@ -115,11 +128,12 @@ def install(dashboard):
             game.screen.blit(msg, (panel.x + 14, panel.y + 48))
             return
 
-        rows = aggregate_players(game.global_history, limit=5)
         table_x = panel.x + 12
         table_y = panel.y + 44
         table_w = panel.width - 24
         row_h = max(28, int(game.font_small.get_height() * 1.55))
+        max_rows = visible_row_limit(panel.height, row_h)
+        rows = aggregate_players(game.global_history, limit=max_rows)
         col_fracs = (0.08, 0.22, 0.14, 0.18, 0.19, 0.19)
         col_widths = [int(table_w * f) for f in col_fracs]
         col_widths[-1] = table_w - sum(col_widths[:-1])
