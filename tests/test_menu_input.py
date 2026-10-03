@@ -9,10 +9,12 @@ class MenuInputContractTests(unittest.TestCase):
         self.assertIn("Select your avatar", source)
         self.assertIn("name_input_rect", source)
 
-    def test_browser_input_uses_native_prompt_and_text_input(self):
+    def test_browser_input_uses_inline_native_field(self):
         source = Path("src/menu_input.py").read_text(encoding="utf-8")
         self.assertIn('sys.platform != "emscripten"', source)
-        self.assertIn("platform.window.prompt", source)
+        self.assertNotIn("platform.window.prompt", source)
+        self.assertIn('createElement("input")', source)
+        self.assertIn('querySelector("canvas")', source)
         self.assertIn("pygame.key.start_text_input()", source)
         self.assertIn("name_input_rect", source)
 
