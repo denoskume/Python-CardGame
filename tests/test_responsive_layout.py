@@ -44,7 +44,7 @@ class ResponsiveLayoutContractTests(unittest.TestCase):
         self.assertIn("desktop_menu.install(db)", source)
 
     def test_result_screen_reserves_clearance_between_cards_and_buttons(self):
-        source = Path("src/dashboard.py").read_text(encoding="utf-8")
+        source = Path("src/desktop_menu.py").read_text(encoding="utf-8")
         self.assertIn("result_clearance", source)
         self.assertIn("button_top", source)
         self.assertIn("max_card_bottom", source)
