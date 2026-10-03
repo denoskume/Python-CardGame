@@ -7,6 +7,8 @@ from scripts.patch_web_shell import patch
 
 SAMPLE_HTML = """<html><head></head><body><script>
 config = {
+    user_canvas : 0,
+    user_canvas_managed : 0,
     fb_ar   :  1.77,
     fb_width : "1280",
     fb_height : "720"
@@ -30,6 +32,17 @@ class WebShellTests(unittest.TestCase):
         self.assertIn('100vw !important', html)
         self.assertIn('100vh !important', html)
         self.assertIn('syncViewportFramebuffer', html)
+
+    def test_patch_prevents_pygbag_from_overriding_canvas_size(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            index = Path(tmp) / "index.html"
+            index.write_text(SAMPLE_HTML, encoding="utf-8")
+            patch(index)
+            html = index.read_text(encoding="utf-8")
+
+        self.assertIn('user_canvas : 1', html)
+        self.assertIn('user_canvas_managed : 1', html)
+        self.assertNotIn('user_canvas_managed : 0', html)
 
 
 if __name__ == "__main__":
