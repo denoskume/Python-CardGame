@@ -20,6 +20,10 @@ python -m pygbag --build --no_opt "$WEB_SRC"
 
 mkdir -p src/build
 cp -R "$WEB_SRC/build/web" src/build/web
+python scripts/patch_web_shell.py src/build/web/index.html
 
 test -f src/build/web/index.html
-printf 'Web build ready with OGG audio: %s\n' "src/build/web"
+grep -q 'full-viewport-shell' src/build/web/index.html
+grep -q 'window.innerWidth' src/build/web/index.html
+grep -q 'window.innerHeight' src/build/web/index.html
+printf 'Web build ready with OGG audio and full viewport shell: %s\n' "src/build/web"
