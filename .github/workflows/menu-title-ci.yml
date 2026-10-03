@@ -1,0 +1,26 @@
+name: Verify Menu Title Fix
+
+on:
+  push:
+    branches: [fix/menu-title-spacing]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+      - name: Run tests
+        run: python -m unittest discover -s tests -v
+      - name: Compile Python sources
+        run: python -m py_compile src/main.py src/game.py src/dashboard.py src/user.py src/bet.py
+      - name: Build browser bundle
+        run: bash scripts/build_web.sh
