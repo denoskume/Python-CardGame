@@ -52,11 +52,16 @@ def _ensure_browser_field(game):
             field = document.createElement("input")
             field.id = _BROWSER_INPUT_ID
             field.type = "text"
+            field.inputMode = "text"
             field.placeholder = "Tap here to type..."
             field.autocomplete = "off"
             field.spellcheck = False
             field.value = game.user.nickname
             field.setAttribute("maxlength", str(game.player_name_max_len))
+            field.setAttribute("onkeydown", "event.stopPropagation();")
+            field.setAttribute("onkeyup", "event.stopPropagation();")
+            field.setAttribute("onkeypress", "event.stopPropagation();")
+            field.setAttribute("oninput", "event.stopPropagation();")
             document.body.appendChild(field)
 
         canvas_rect = canvas.getBoundingClientRect()
