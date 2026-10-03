@@ -30,7 +30,7 @@ def _remove_browser_field():
 
 
 def _install_browser_key_capture(field):
-    """Make the inline field independent from Pygbag's global key handling."""
+    """Stop field keystrokes reaching Pygbag while preserving native typing."""
     try:
         import platform
 
@@ -44,32 +44,19 @@ def _install_browser_key_capture(field):
               if (!field || field.getAttribute('data-cardgame-keys') === '1') return;
               field.setAttribute('data-cardgame-keys', '1');
 
-              field.addEventListener("keydown", (event) => {
-                if (document.activeElement !== field) return;
-
-                if (event.key === "Backspace") {
-                  field.value = field.value.slice(0, -1);
-                  event.preventDefault();
+              for (const eventName of ["keydown", "keyup", "keypress"]) {
+                field.addEventListener(eventName, (event) => {
                   event.stopPropagation();
-                  return;
-                }
+                });
+              }
 
+              field.addEventListener("input", (event) => {
+                event.stopPropagation();
+              });
+
+              field.addEventListener("keydown", (event) => {
                 if (event.key === "Enter") {
                   field.blur();
-                  event.preventDefault();
-                  event.stopPropagation();
-                  return;
-                }
-
-                const key = String(event.key || "");
-                if (key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
-                  const maxLength = Number(field.maxLength || 20);
-                  const current = String(field.value || "");
-                  if (current.length < maxLength) {
-                    field.value = current + key;
-                    field.dispatchEvent(new Event("input", { bubbles: true }));
-                  }
-                  event.preventDefault();
                   event.stopPropagation();
                 }
               });
@@ -108,10 +95,6 @@ def _ensure_browser_field(game):
             field.spellcheck = False
             field.value = game.user.nickname
             field.setAttribute("maxlength", str(game.player_name_max_len))
-            field.setAttribute("onkeydown", "event.stopPropagation();")
-            field.setAttribute("onkeyup", "event.stopPropagation();")
-            field.setAttribute("onkeypress", "event.stopPropagation();")
-            field.setAttribute("oninput", "event.stopPropagation();")
             document.body.appendChild(field)
             _install_browser_key_capture(field)
 
