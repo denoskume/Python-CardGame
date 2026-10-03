@@ -16,10 +16,12 @@ import bet as bt
 import game as gm
 import dashboard as db
 import desktop_menu
+import menu_input
 import web_history
 
 
 desktop_menu.install(db)
+menu_input.install(gm)
 web_history.install(gm)
 
 
