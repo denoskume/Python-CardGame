@@ -17,12 +17,14 @@ import game as gm
 import dashboard as db
 import desktop_menu
 import menu_input
+import player_profiles
 import web_history
 
 
 desktop_menu.install(db)
 menu_input.install(gm)
 web_history.install(gm)
+player_profiles.install(gm)
 
 
 def _browser_viewport():
