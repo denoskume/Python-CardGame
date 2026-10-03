@@ -13,35 +13,47 @@ class HistoryTableTests(unittest.TestCase):
             ("#", "Player", "Bet", "Result", "Cash", "Goal"),
         )
 
-    def test_returns_only_five_latest_unique_events(self):
+    def test_same_player_is_aggregated_into_one_row(self):
         import history_table
-        duplicate = {"round": 7, "player": "Drama", "bet": 25, "stake": 25, "result": "WIN", "balance_after": 105}
         rows = [
-            {"round": 3, "player": "Drama", "bet": 45, "stake": 90, "result": "WIN", "balance_after": 180},
-            {"round": 4, "player": "Drama", "bet": 50, "stake": 150, "result": "LOSE", "balance_after": 30},
-            {"round": 5, "player": "Drama", "bet": 25, "stake": 25, "result": "WIN", "balance_after": 55},
-            {"round": 6, "player": "Drama", "bet": 25, "stake": 25, "result": "WIN", "balance_after": 80},
-            duplicate,
-            dict(duplicate),
-            {"round": 8, "player": "Drama", "bet": 25, "stake": 25, "result": "WIN", "balance_after": 130},
-            {"round": 9, "player": "Drama", "bet": 25, "stake": 25, "result": "LOSE", "balance_after": 105},
+            {"round": 1, "player": "Drama", "bet": 25, "stake": 25, "result": "WIN", "balance_after": 55},
+            {"round": 2, "player": " drama ", "bet": 50, "stake": 100, "result": "LOSE", "balance_after": 0},
+            {"round": 3, "player": "DRAMA", "bet": 20, "stake": 20, "result": "WIN", "balance_after": 20},
         ]
-        latest = history_table.latest_events(rows, limit=5)
-        self.assertEqual([row["round"] for row in latest], [9, 8, 7, 6, 5])
-        self.assertEqual(len(latest), 5)
+        aggregated = history_table.aggregate_players(rows, limit=5)
+        self.assertEqual(len(aggregated), 1)
+        row = aggregated[0]
+        self.assertEqual(row["player"], "DRAMA")
+        self.assertEqual(row["total_bet"], 95)
+        self.assertEqual(row["wins"], 2)
+        self.assertEqual(row["losses"], 1)
+        self.assertEqual(row["cash"], 20)
+        self.assertEqual(row["goal"], -55)
 
-    def test_row_values_use_real_event_data(self):
+    def test_only_five_most_recent_unique_players_are_returned(self):
         import history_table
-        row = {"round": 8, "player": "Drama", "bet": 25, "stake": 25, "result": "WIN", "balance_after": 130}
+        rows = []
+        for index, name in enumerate(("A", "B", "C", "D", "E", "F"), start=1):
+            rows.append({"round": index, "player": name, "bet": 10, "stake": 10, "result": "WIN", "balance_after": 40})
+        rows.append({"round": 7, "player": "B", "bet": 10, "stake": 10, "result": "LOSE", "balance_after": 30})
+        aggregated = history_table.aggregate_players(rows, limit=5)
+        self.assertEqual([row["player"] for row in aggregated], ["B", "F", "E", "D", "C"])
+        self.assertEqual(len(aggregated), 5)
+
+    def test_row_values_show_aggregated_player_data(self):
+        import history_table
+        row = {
+            "player": "Drama",
+            "total_bet": 120,
+            "wins": 3,
+            "losses": 2,
+            "cash": 105,
+            "goal": 25,
+        }
         self.assertEqual(
-            history_table.row_values(row),
-            ("8", "Drama", "25$", "WIN", "130$", "+25$"),
+            history_table.row_values(row, display_index=1),
+            ("1", "Drama", "120$", "3W / 2L", "105$", "+25$"),
         )
-
-    def test_loss_goal_is_negative(self):
-        import history_table
-        row = {"round": 9, "player": "Drama", "bet": 25, "stake": 25, "result": "LOSE", "balance_after": 105}
-        self.assertEqual(history_table.row_values(row)[-1], "-25$")
 
     def test_main_installs_history_table(self):
         source = Path("src/main.py").read_text(encoding="utf-8")
