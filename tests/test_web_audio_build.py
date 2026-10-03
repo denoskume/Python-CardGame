@@ -9,9 +9,9 @@ class WebAudioBuildTests(unittest.TestCase):
 
         self.assertIn("ffmpeg", workflow.lower())
         self.assertIn("web-src", script)
-        self.assertIn("shuffle.ogg", script)
-        self.assertIn("win.ogg", script)
-        self.assertIn("lose.ogg", script)
+        self.assertIn("for sound in shuffle win lose", script)
+        self.assertIn("${sound}.mp3", script)
+        self.assertIn("${sound}.ogg", script)
         self.assertIn('s/\\.mp3"/\\.ogg"/g', script)
         self.assertIn("pygbag", script)
 
