@@ -16,9 +16,11 @@ import bet as bt
 import game as gm
 import dashboard as db
 import desktop_menu
+import web_history
 
 
 desktop_menu.install(db)
+web_history.install(gm)
 
 
 def _browser_viewport():
