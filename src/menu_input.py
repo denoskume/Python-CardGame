@@ -29,6 +29,57 @@ def _remove_browser_field():
         pass
 
 
+def _install_browser_key_capture(field):
+    """Make the inline field independent from Pygbag's global key handling."""
+    try:
+        import platform
+
+        if str(field.dataset.cardgameKeys or "") == "1":
+            return
+
+        platform.window.eval(
+            """
+            (() => {
+              const field = document.getElementById('cardgame-name-input');
+              if (!field || field.dataset.cardgameKeys === '1') return;
+              field.dataset.cardgameKeys = '1';
+
+              field.addEventListener("keydown", (event) => {
+                if (document.activeElement !== field) return;
+
+                if (event.key === "Backspace") {
+                  field.value = field.value.slice(0, -1);
+                  event.preventDefault();
+                  event.stopPropagation();
+                  return;
+                }
+
+                if (event.key === "Enter") {
+                  field.blur();
+                  event.preventDefault();
+                  event.stopPropagation();
+                  return;
+                }
+
+                const key = String(event.key || "");
+                if (key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+                  const maxLength = Number(field.maxLength || 20);
+                  const current = String(field.value || "");
+                  if (current.length < maxLength) {
+                    field.value = current + key;
+                    field.dispatchEvent(new Event("input", { bubbles: true }));
+                  }
+                  event.preventDefault();
+                  event.stopPropagation();
+                }
+              });
+            })();
+            """
+        )
+    except Exception:
+        pass
+
+
 def _ensure_browser_field(game):
     """Overlay a real HTML input exactly on the responsive Pygame name field."""
     if sys.platform != "emscripten":
@@ -41,8 +92,7 @@ def _ensure_browser_field(game):
     try:
         import platform
 
-        window = platform.window
-        document = window.document
+        document = platform.window.document
         canvas = document.querySelector("canvas")
         if canvas is None:
             return None
@@ -58,11 +108,11 @@ def _ensure_browser_field(game):
             field.spellcheck = False
             field.value = game.user.nickname
             field.setAttribute("maxlength", str(game.player_name_max_len))
-            field.setAttribute("onkeydown", "event.stopPropagation();")
             field.setAttribute("onkeyup", "event.stopPropagation();")
             field.setAttribute("onkeypress", "event.stopPropagation();")
             field.setAttribute("oninput", "event.stopPropagation();")
             document.body.appendChild(field)
+            _install_browser_key_capture(field)
 
         canvas_rect = canvas.getBoundingClientRect()
         scale_x = canvas_rect.width / max(1, game.w)
@@ -89,14 +139,17 @@ def _ensure_browser_field(game):
         style.setProperty("-webkit-text-fill-color", "#111111", "important")
         style.setProperty("caret-color", "#111111", "important")
         style.setProperty("opacity", "1", "important")
-        style.setProperty("font", "700 18px Arial, sans-serif", "important")
-        style.setProperty("line-height", "normal", "important")
+        style.setProperty("font-family", "Arial, sans-serif", "important")
+        style.setProperty("font-size", "18px", "important")
+        style.setProperty("font-weight", "700", "important")
+        style.setProperty("line-height", f"{height}px", "important")
         style.setProperty("text-align", "left", "important")
         style.setProperty("text-shadow", "none", "important")
         style.setProperty("appearance", "none", "important")
         style.setProperty("-webkit-appearance", "none", "important")
         style.setProperty("outline", "none")
 
+        _install_browser_key_capture(field)
         return field
     except Exception:
         return None
