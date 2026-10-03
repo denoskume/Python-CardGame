@@ -32,11 +32,16 @@ class ResponsiveLayoutContractTests(unittest.TestCase):
         self.assertIn("title_y + title_clearance", source)
 
     def test_desktop_menu_uses_full_available_width(self):
-        source = Path("src/dashboard.py").read_text(encoding="utf-8")
-        self.assertIn('desktop_menu = not cfg["compact"]', source)
-        self.assertIn('width = game.w - 2 * cfg["margin"] if desktop_menu else', source)
-        self.assertIn('input_width = min(420 if desktop_menu else 300', source)
-        self.assertIn('btn_w = min(320 if desktop_menu else 240', source)
+        source = Path("src/desktop_menu.py").read_text(encoding="utf-8")
+        self.assertIn('if cfg["compact"]', source)
+        self.assertIn('panel_width = game.w - 2 * cfg["margin"]', source)
+        self.assertIn('input_width = min(420', source)
+        self.assertIn('btn_w = min(320', source)
+
+    def test_main_installs_desktop_menu_override(self):
+        source = Path("src/main.py").read_text(encoding="utf-8")
+        self.assertIn("import desktop_menu", source)
+        self.assertIn("desktop_menu.install(db)", source)
 
 
 if __name__ == "__main__":
