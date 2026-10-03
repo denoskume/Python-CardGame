@@ -33,6 +33,8 @@ function syncViewportFramebuffer() {
         config.fb_width = String(width);
         config.fb_height = String(height);
         config.fb_ar = width / height;
+        config.user_canvas = 1;
+        config.user_canvas_managed = 1;
     }
     const canvas = document.getElementById('canvas');
     if (canvas) {
@@ -40,9 +42,8 @@ function syncViewportFramebuffer() {
         canvas.style.setProperty('height', '100vh', 'important');
         canvas.style.setProperty('max-width', 'none', 'important');
         canvas.style.setProperty('max-height', 'none', 'important');
-    }
-    if (typeof window_resize === 'function') {
-        window_resize();
+        canvas.style.setProperty('margin', '0', 'important');
+        canvas.style.setProperty('inset', '0', 'important');
     }
 }
 window.addEventListener('resize', syncViewportFramebuffer);
@@ -55,12 +56,38 @@ window.addEventListener('load', () => setTimeout(syncViewportFramebuffer, 0));
 def patch(index_path: Path) -> None:
     html = index_path.read_text(encoding="utf-8")
 
-    html, count_ar = re.subn(r"fb_ar\s*:\s*1\.77", "fb_ar : window.innerWidth / Math.max(1, window.innerHeight)", html, count=1)
-    html, count_w = re.subn(r'fb_width\s*:\s*"1280"', 'fb_width : String(window.innerWidth)', html, count=1)
-    html, count_h = re.subn(r'fb_height\s*:\s*"720"', 'fb_height : String(window.innerHeight)', html, count=1)
+    html = html.replace(
+        'platform.document.body.style.background = "#7f7f7f"',
+        'platform.document.body.style.background = "#181818"',
+    )
+    html, count_user = re.subn(r"user_canvas\s*:\s*0", "user_canvas : 1", html, count=1)
+    html, count_managed = re.subn(
+        r"user_canvas_managed\s*:\s*0",
+        "user_canvas_managed : 1",
+        html,
+        count=1,
+    )
+    html, count_ar = re.subn(
+        r"fb_ar\s*:\s*1\.77",
+        "fb_ar : window.innerWidth / Math.max(1, window.innerHeight)",
+        html,
+        count=1,
+    )
+    html, count_w = re.subn(
+        r'fb_width\s*:\s*"1280"',
+        'fb_width : String(window.innerWidth)',
+        html,
+        count=1,
+    )
+    html, count_h = re.subn(
+        r'fb_height\s*:\s*"720"',
+        'fb_height : String(window.innerHeight)',
+        html,
+        count=1,
+    )
 
-    if not (count_ar and count_w and count_h):
-        raise RuntimeError("Expected Pygbag framebuffer defaults were not found in index.html")
+    if not (count_user and count_managed and count_ar and count_w and count_h):
+        raise RuntimeError("Expected Pygbag canvas/framebuffer defaults were not found in index.html")
 
     if 'id="full-viewport-shell"' not in html:
         html = html.replace("</head>", FULL_VIEWPORT_STYLE + "\n</head>", 1)
