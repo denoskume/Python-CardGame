@@ -1,15 +1,10 @@
-"""Application entry point for Rouge Gagne, Noir Perd.
-
-This module configures platform-specific audio, initializes Pygame,
-creates the domain objects, and runs the event/update/render loop.
-"""
+"""Application entry point for Rouge Gagne, Noir Perd."""
 
 import asyncio
 import os
+import sys
 from pathlib import Path
 
-# WSLg exposes Windows audio through a PulseAudio socket.
-# Configure SDL before importing/initializing pygame so the mixer uses it.
 _wslg_pulse = Path("/mnt/wslg/PulseServer")
 if _wslg_pulse.exists():
     os.environ.setdefault("PULSE_SERVER", "unix:/mnt/wslg/PulseServer")
@@ -19,53 +14,71 @@ import pygame
 import user as us
 import bet as bt
 import game as gm
-import dashboard as db
+
+
+def _browser_viewport():
+    """Return the current browser viewport when running through Pygbag."""
+    if sys.platform != "emscripten":
+        return None
+    try:
+        import platform
+        width = int(platform.window.innerWidth)
+        height = int(platform.window.innerHeight)
+        return max(320, width), max(300, height)
+    except Exception:
+        return None
+
+
+def _initial_size():
+    """Choose a useful first window size for desktop and browser devices."""
+    viewport = _browser_viewport()
+    if viewport is not None:
+        return viewport
+    return 960, 630
 
 
 async def main() -> None:
-    """Initialize Pygame, create game objects, and run the main loop."""
     pygame.mixer.pre_init(44100, -16, 2, 512)
     pygame.init()
 
-    # Ensure the mixer is connected to the selected SDL audio backend.
     if pygame.mixer.get_init() is None:
         try:
-            pygame.mixer.init(
-                frequency=44100,
-                size=-16,
-                channels=2,
-                buffer=512,
-            )
-        except pygame.error as e:
-            print(f"⚠ Audio unavailable; continuing without sound: {e}")
-    else:
-        print(
-            "✓ Audio initialized:",
-            pygame.mixer.get_init(),
-            "| driver:",
-            os.environ.get("SDL_AUDIODRIVER", "auto"),
-            "| server:",
-            os.environ.get("PULSE_SERVER", "default"),
-        )
+            pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
+        except pygame.error as exc:
+            print(f"⚠ Audio unavailable; continuing without sound: {exc}")
+
     pygame.display.set_caption("Rouge gagne, Noir perd")
-    screen = pygame.display.set_mode((960, 630))
+    screen = pygame.display.set_mode(_initial_size(), pygame.RESIZABLE)
     clock = pygame.time.Clock()
 
-    # Domain objects hold player and betting state independently of rendering.
     player = us.User(nickname="", avatar_index=0, initial_balance=30)
     betting = bt.Bet(min_amount=10, max_amount=100, amount=10, turbo=1)
-
-    # CardGame coordinates state transitions, timers, gameplay, and persistence.
     card_game = gm.CardGame(screen, player, betting)
 
     running = True
+    last_browser_size = screen.get_size()
+
     while running:
-        # Process input first, then update the active state and render one frame.
+        browser_size = _browser_viewport()
+        if browser_size is not None and browser_size != last_browser_size:
+            screen = pygame.display.set_mode(browser_size, pygame.RESIZABLE)
+            card_game.screen = screen
+            card_game.w, card_game.h = screen.get_size()
+            last_browser_size = browser_size
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+            elif event.type == pygame.VIDEORESIZE:
+                width = max(320, event.w)
+                height = max(300, event.h)
+                screen = pygame.display.set_mode((width, height), pygame.RESIZABLE)
+                card_game.screen = screen
+                card_game.w, card_game.h = screen.get_size()
+                last_browser_size = screen.get_size()
             else:
                 card_game.handle_event(event)
+
         card_game.update()
         card_game.draw()
         pygame.display.flip()
