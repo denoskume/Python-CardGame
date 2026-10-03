@@ -6,6 +6,7 @@ import pygame
 def install(dashboard):
     """Replace dashboard.draw_menu with a full-size desktop variant."""
     original_draw_menu = dashboard.draw_menu
+    original_draw_result = dashboard.draw_result
 
     def draw_menu(game):
         cfg = dashboard._layout(game)
@@ -106,4 +107,27 @@ def install(dashboard):
             game.BLACK,
         )
 
+    def draw_result(game):
+        cfg = dashboard._layout(game)
+        if cfg["compact"] or cfg["portrait"]:
+            return original_draw_result(game)
+
+        dashboard._sync_card_geometry(game)
+
+        button_h = max(cfg["min_touch"], 50)
+        button_top = game.h - button_h - cfg["margin"]
+        result_clearance = max(16, int(game.h * 0.025))
+
+        if game.cards:
+            max_card_bottom = max(card.rect.bottom for card in game.cards)
+            card_shift = max(0, max_card_bottom - (button_top - result_clearance))
+            if card_shift:
+                for card in game.cards:
+                    card.rect.y -= card_shift
+                if game.selected_card_rect is not None:
+                    game.selected_card_rect.y -= card_shift
+
+        return original_draw_result(game)
+
     dashboard.draw_menu = draw_menu
+    dashboard.draw_result = draw_result
