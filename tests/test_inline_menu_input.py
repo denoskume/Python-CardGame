@@ -13,7 +13,7 @@ class InlineMenuInputTests(unittest.TestCase):
 
     def test_browser_field_syncs_with_nickname(self):
         source = Path("src/menu_input.py").read_text(encoding="utf-8")
-        self.assertIn("self.user.nickname", source)
+        self.assertIn("game.user.nickname", source)
         self.assertIn("field.value", source)
         self.assertIn("player_name_max_len", source)
 
