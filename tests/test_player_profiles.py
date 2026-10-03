@@ -37,8 +37,17 @@ class PlayerProfileContractTests(unittest.TestCase):
         self.assertIn("welcome_granted", source)
 
     def test_bet_screen_has_welcome_balance_label(self):
-        source = Path("src/dashboard.py").read_text(encoding="utf-8")
+        source = Path("src/welcome_balance_ui.py").read_text(encoding="utf-8")
         self.assertIn("Welcome Balance", source)
+        self.assertIn("welcome_balance_granted_now", source)
+
+    def test_main_installs_profiles_after_browser_history(self):
+        source = Path("src/main.py").read_text(encoding="utf-8")
+        history_pos = source.index("web_history.install(gm)")
+        profiles_pos = source.index("player_profiles.install(gm)")
+        game_pos = source.index("gm.CardGame(")
+        self.assertLess(history_pos, profiles_pos)
+        self.assertLess(profiles_pos, game_pos)
 
 
 if __name__ == "__main__":
