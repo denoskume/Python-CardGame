@@ -3,6 +3,11 @@
 import pygame
 
 
+def _instruction(game, dashboard, text, y):
+    """Draw a concise centered instruction using the responsive small font."""
+    dashboard._draw_center_text(game, text, y, game.font_small, game.LIGHT)
+
+
 def install(dashboard):
     """Replace dashboard.draw_menu with a full-size desktop variant."""
     original_draw_menu = dashboard.draw_menu
@@ -11,7 +16,22 @@ def install(dashboard):
     def draw_menu(game):
         cfg = dashboard._layout(game)
         if cfg["compact"]:
-            return original_draw_menu(game)
+            original_draw_menu(game)
+
+            input_width = min(300, game.w - 2 * cfg["margin"] - 30)
+            panel_top = max(62, cfg["margin"] + max(24, game.font_title.get_height() // 2) + game.font_title.get_height() // 2 + 16)
+            input_y = max(155, panel_top + 54)
+            game.name_input_rect = pygame.Rect(
+                game.w // 2 - input_width // 2,
+                input_y,
+                input_width,
+                cfg["min_touch"],
+            )
+
+            _instruction(game, dashboard, "Enter your nickname or name", game.name_input_rect.y - 18)
+            if game.avatar_rects:
+                _instruction(game, dashboard, "Select your avatar", game.avatar_rects[0].y - 22)
+            return
 
         dashboard._sync_card_geometry(game)
         game.screen.fill(game.DARK)
@@ -33,34 +53,39 @@ def install(dashboard):
 
         input_width = min(420, panel.width - 100)
         input_height = max(cfg["min_touch"], 52)
-        input_y = panel.y + max(48, int(panel.height * 0.11))
-        input_rect = pygame.Rect(
+        input_y = panel.y + max(66, int(panel.height * 0.13))
+        game.name_input_rect = pygame.Rect(
             panel.centerx - input_width // 2,
             input_y,
             input_width,
             input_height,
         )
+
+        _instruction(game, dashboard, "Enter your nickname or name", game.name_input_rect.y - 24)
+
         pygame.draw.rect(
             game.screen,
             game.WHITE if game.active_input else game.GREY,
-            input_rect,
+            game.name_input_rect,
             border_radius=8,
         )
-        pygame.draw.rect(game.screen, game.BLACK, input_rect, 2, border_radius=8)
+        pygame.draw.rect(game.screen, game.BLACK, game.name_input_rect, 2, border_radius=8)
 
         value = game.user.nickname if game.user.nickname else "Tap here to type..."
         color = game.BLACK if game.user.nickname else (150, 150, 150)
         text = game.font_norm.render(value, True, color)
         game.screen.blit(
             text,
-            (input_rect.x + 12, input_rect.centery - text.get_height() // 2),
+            (game.name_input_rect.x + 12, game.name_input_rect.centery - text.get_height() // 2),
         )
 
         avatar_size = int(dashboard._clamp(min(game.w * 0.075, game.h * 0.15), 76, 96))
         spacing = int(dashboard._clamp(game.w * 0.045, 38, 74))
         total_width = 3 * avatar_size + 2 * spacing
         start_x = panel.centerx - total_width // 2
-        avatar_y = panel.y + int(panel.height * 0.42)
+        avatar_y = panel.y + int(panel.height * 0.45)
+
+        _instruction(game, dashboard, "Select your avatar", avatar_y - 28)
 
         game.avatar_rects = [
             pygame.Rect(
