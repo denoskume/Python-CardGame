@@ -19,9 +19,11 @@ import desktop_menu
 import menu_input
 import player_profiles
 import web_history
+import welcome_balance_ui
 
 
 desktop_menu.install(db)
+welcome_balance_ui.install(db)
 menu_input.install(gm)
 web_history.install(gm)
 player_profiles.install(gm)
