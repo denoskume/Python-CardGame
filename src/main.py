@@ -14,6 +14,11 @@ import pygame
 import user as us
 import bet as bt
 import game as gm
+import dashboard as db
+import desktop_menu
+
+
+desktop_menu.install(db)
 
 
 def _browser_viewport():
