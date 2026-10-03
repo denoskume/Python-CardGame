@@ -1,6 +1,6 @@
 class Bet:
     """Manage bet limits, current amount, and turbo multiplier."""
-    def __init__(self, min_amount: int = 10, max_amount: int = 100, amount: int = 10, turbo: int = 1):
+    def __init__(self, min_amount: int = 10, max_amount: int = 1000, amount: int = 10, turbo: int = 1):
         self.min = min_amount
         self.max = max_amount
         self.amount = amount
@@ -32,4 +32,3 @@ class Bet:
     def is_valid(self, balance: int) -> bool:
         """Check that bet is inside limits and affordable."""
         return self.min <= self.amount <= self.max and self.amount <= balance
-
