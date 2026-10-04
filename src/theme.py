@@ -10,6 +10,8 @@ MUTED=(153,163,177)
 RED=(199,54,71)
 GREEN=(105,211,170)
 GOLD=(223,185,112)
+TEXT_SCALE_DESKTOP=1.40
+TEXT_SCALE_COMPACT=1.30
 
 
 class SmoothFallbackFont:
@@ -68,10 +70,14 @@ class ThemeResources:
             return self.cache[size]
         w,h=size
         compact=w<600 or h<500
-        fonts={name:_font(self.assets/('ui-bold.ttf' if bold else 'ui-regular.ttf'),px,bold)
-               for name,px,bold in [('hero',30 if compact else 48,True),('title',24 if compact else 32,True),
-                                   ('body',15 if compact else 18,False),('small',12 if compact else 14,False),
-                                   ('tiny',10 if compact else 12,True),('number',32 if compact else 46,True)]}
+        text_scale=TEXT_SCALE_COMPACT if compact else TEXT_SCALE_DESKTOP
+        font_specs=[('hero',30 if compact else 48,True),('title',24 if compact else 32,True),
+                    ('body',15 if compact else 18,False),('small',12 if compact else 14,False),
+                    ('tiny',10 if compact else 12,True),('number',32 if compact else 46,True)]
+        fonts={}
+        for name,px,bold in font_specs:
+            scaled_px=max(10,int(round(px*text_scale)))
+            fonts[name]=_font(self.assets/('ui-bold.ttf' if bold else 'ui-regular.ttf'),scaled_px,bold)
         background=pygame.Surface(size)
         background.fill(BG)
         for x in range(-h,w,64):
