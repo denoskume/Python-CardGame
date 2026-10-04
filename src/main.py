@@ -5,10 +5,6 @@ import os
 import sys
 from pathlib import Path
 
-# pygame-ce can route pygame.font through FreeType instead of SDL_ttf.
-# This keeps bundled TTF text sharp in the browser and avoids SDL_ttf NULL surfaces.
-os.environ.setdefault("PYGAME_FREETYPE", "1")
-
 _wslg_pulse = Path("/mnt/wslg/PulseServer")
 if _wslg_pulse.exists():
     os.environ.setdefault("PULSE_SERVER", "unix:/mnt/wslg/PulseServer")
