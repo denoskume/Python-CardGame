@@ -67,18 +67,18 @@ jobs:
               if (msg.type() === 'error') problems.push('CONSOLE: ' + msg.text());
             });
             await page.goto('http://127.0.0.1:8000/', {waitUntil:'load', timeout:60000});
-            await page.waitForFunction(() => {
-              const box = document.getElementById('infobox');
-              return box && box.innerText.includes('Ready to start');
-            }, {timeout:60000});
-            await page.mouse.click(680, 300);
-            await page.waitForFunction(() => !document.getElementById('cardgame-loading'), {timeout:60000});
+
+            // --ume_block 0 means Pygbag must start automatically. main.py removes
+            // this overlay only after pygame and CardGame have initialized.
+            await page.waitForFunction(() => !document.getElementById('cardgame-loading'), null, {timeout:60000});
             await page.waitForTimeout(2500);
             await page.screenshot({path:'/tmp/cardgame-browser.png'});
+
             const canvas = await page.$('#canvas');
             if (!canvas) problems.push('Canvas #canvas is missing');
-            const overlay = await page.$('#cardgame-loading');
-            if (overlay) problems.push('Loading overlay is still present after Python main started');
+            const canvasSize = canvas ? await canvas.evaluate(el => ({w:el.width,h:el.height,cssW:el.clientWidth,cssH:el.clientHeight})) : null;
+            console.log('Canvas:', JSON.stringify(canvasSize));
+            console.log('Infobox:', await page.locator('#infobox').innerText().catch(() => '<missing>'));
             console.log(problems.join('\n'));
             await browser.close();
             if (problems.length) process.exit(2);
