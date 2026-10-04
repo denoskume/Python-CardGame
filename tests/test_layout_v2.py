@@ -43,6 +43,11 @@ class LayoutV2Tests(unittest.TestCase):
         layout=compute_layout((1365,600),'SETTINGS')
         self.assertGreaterEqual(layout['btn_easy'].top,205)
 
+    def test_settings_title_has_no_redundant_subtitle(self):
+        source = Path('src/dashboard.py').read_text(encoding='utf-8')
+        self.assertIn("title(game,fonts,'Find your rhythm')", source)
+        self.assertNotIn("title(game,fonts,'Find your rhythm','Difficulty and sound')", source)
+
 
 if __name__ == '__main__':
     unittest.main()
