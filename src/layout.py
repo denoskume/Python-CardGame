@@ -63,6 +63,8 @@ def compute_layout(size: tuple[int,int], state: str) -> dict[str, pygame.Rect]:
     card_w=min(180,int(card_h*.70),(width-2*gap)//3)
     card_h=int(card_w/0.70)
     card_y=int(h*.42) if not short else 180
+    if state == 'START_SCREEN' and not short:
+        card_y = min(h-100-card_h, 390)
     card_y=min(card_y,h-100-card_h)
     start=(w-3*card_w-2*gap)//2
     for i in range(3):

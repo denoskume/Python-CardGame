@@ -140,7 +140,7 @@ def home(game,layout,fonts):
         text(s,fonts,'Trust your focus.',(left,207),'hero')
         wrapped(s,fonts,'Three cards. One red. A moving challenge for your visual memory.',left,276,int(w*.38))
         hero_x=left+45
-        for i in range(3): card(s,fonts,pygame.Rect(hero_x+i*114,358,98,142),True,i==1)
+        for i in range(3): card(s,fonts,pygame.Rect(hero_x+i*114,390,98,142),True,i==1)
         history_rect=pygame.Rect(w//2+28,124,w//2-left-28,h-238)
     else:
         text(s,fonts,'Follow the red.',(w//2,121),'hero',TEXT,True)
@@ -269,6 +269,11 @@ def game_over(game,layout,fonts):
 
 
 def draw_screen(game,layout,resources):
+    if not pygame.font.get_init():
+        pygame.font.init()
+        game.theme.cache.clear()
+        resources = game.theme.for_size((game.w, game.h))
+        game.resources = resources
     fonts=resources['fonts'];s=game.screen
     s.blit(resources['background'],(0,0));header(game,fonts)
     state=game.state
