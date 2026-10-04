@@ -45,7 +45,8 @@ def compute_layout(size: tuple[int,int], state: str) -> dict[str, pygame.Rect]:
         for i in range(3): button('turbo_'+str(i+1),w//2-118+i*82,y+64,72)
         bottom(['menu','start'])
     elif state=='SETTINGS':
-        y=140 if short else int(h*.29)
+        # Leave enough vertical clearance for the globally enlarged title/subtitle.
+        y=140 if short else max(205,int(h*.34))
         gap=8; bw=min(180,(width-16)//3)
         for i,name in enumerate(['easy','normal','expert']):
             button(name,(w-(bw*3+gap*2))//2+i*(bw+gap),y,bw)
