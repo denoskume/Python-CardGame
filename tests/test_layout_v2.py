@@ -6,6 +6,7 @@ import pygame
 
 class LayoutV2Tests(unittest.TestCase):
     def test_start_action_is_centered_in_hero_area(self):
+        from layout import compute_layout
         layout = compute_layout((960, 630), 'START_SCREEN')
         play = layout['btn_play']
         self.assertEqual(play.size, (220, 48))
@@ -36,3 +37,12 @@ class LayoutV2Tests(unittest.TestCase):
         layout=compute_layout((844,390),'RESULT')
         self.assertGreaterEqual(layout['card_0'].top,176)
         self.assertLessEqual(layout['card_0'].bottom,290)
+
+    def test_settings_controls_clear_enlarged_title_area(self):
+        from layout import compute_layout
+        layout=compute_layout((1365,600),'SETTINGS')
+        self.assertGreaterEqual(layout['btn_easy'].top,205)
+
+
+if __name__ == '__main__':
+    unittest.main()
