@@ -242,11 +242,12 @@ def settings_screen(game,layout,fonts):
 
 
 def help_screen(game,layout,fonts):
-    scale=2
+    scale=1.4
 
     def help_text(value,pos,kind='small',color=TEXT,center=False):
         surface=fonts[kind].render(str(value),True,color)
-        surface=pygame.transform.smoothscale(surface,(surface.get_width()*scale,surface.get_height()*scale))
+        target=(max(1,round(surface.get_width()*scale)),max(1,round(surface.get_height()*scale)))
+        surface=pygame.transform.smoothscale(surface,target)
         rect=surface.get_rect(center=pos) if center else surface.get_rect(topleft=pos)
         game.screen.blit(surface,rect)
         return rect
@@ -257,13 +258,13 @@ def help_screen(game,layout,fonts):
             candidate=(line+' '+word).strip()
             if fonts[kind].size(candidate)[0]*scale>width and line:
                 help_text(line,(x,y),kind,color)
-                y+=fonts[kind].get_linesize()*scale+5
+                y+=round(fonts[kind].get_linesize()*scale)+5
                 line=word
             else:
                 line=candidate
         if line:
             help_text(line,(x,y),kind,color)
-            y+=fonts[kind].get_linesize()*scale+5
+            y+=round(fonts[kind].get_linesize()*scale)+5
         return y
 
     help_text('How to play',(game.w//2,108),'title',TEXT,True)
