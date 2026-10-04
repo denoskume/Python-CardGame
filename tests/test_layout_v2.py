@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0,str(Path('src').resolve()))
 import pygame
+from layout import compute_layout
 
 class LayoutV2Tests(unittest.TestCase):
     def test_start_action_is_centered_in_hero_area(self):
@@ -14,7 +15,6 @@ class LayoutV2Tests(unittest.TestCase):
         self.assertLess(play.bottom, layout['card_0'].top)
 
     def test_controls_stay_inside_viewport(self):
-        from layout import compute_layout
         for size in [(360,640),(390,844),(844,390),(960,630),(1440,900)]:
             bounds = pygame.Rect((0,0),size)
             for state in ['START_SCREEN','MENU','BET_SETUP','SHOW_BACKS','CHOOSE','RESULT','GAME_OVER','HELP','SETTINGS','PAUSE']:
@@ -30,7 +30,6 @@ class LayoutV2Tests(unittest.TestCase):
                                 self.assertFalse(layout[f'card_{i}'].colliderect(rect))
 
     def test_landscape_header_clearance(self):
-        from layout import compute_layout
         layout=compute_layout((844,390),'MENU')
         self.assertGreaterEqual(layout['name_input'].top,170)
         layout=compute_layout((844,390),'RESULT')
