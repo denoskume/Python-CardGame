@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0,str(Path('src').resolve()))
 import pygame
+from layout import compute_layout
 
 class LayoutV2Tests(unittest.TestCase):
     def test_start_action_is_centered_in_hero_area(self):

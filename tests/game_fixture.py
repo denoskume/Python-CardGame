@@ -16,6 +16,7 @@ from storage import Storage
 
 def make_game(test, balance=30, now_ms=0):
     pygame.init()
+    pygame.font.init()
     pygame.display.set_mode((960, 630))
     temp = tempfile.TemporaryDirectory()
     test.addCleanup(temp.cleanup)
