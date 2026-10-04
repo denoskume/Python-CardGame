@@ -232,7 +232,7 @@ def table(game,layout,fonts):
 
 
 def settings_screen(game,layout,fonts):
-    title(game,fonts,'Find your rhythm','Difficulty and sound')
+    title(game,fonts,'Find your rhythm')
     y=layout['btn_easy'].y
     if game.h>=500:
         text(game.screen,fonts,'SHUFFLE DIFFICULTY',(game.w//2,y-26),'tiny',GOLD,True)
