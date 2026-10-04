@@ -14,6 +14,18 @@ import pygame
 import user as us
 import bet as bt
 import game as gm
+
+
+def _browser_log(message):
+    if sys.platform != "emscripten":
+        return
+    try:
+        import platform
+        platform.window.console.log(f"[CARDGAME] {message}")
+    except Exception:
+        pass
+
+
 def _browser_viewport():
     """Return the current browser viewport when running through Pygbag."""
     if sys.platform != "emscripten":
@@ -39,14 +51,17 @@ async def main() -> None:
     pygame.mixer.pre_init(44100, -16, 2, 512)
     pygame.display.init()
     pygame.font.init()
+    _browser_log(f"pygame-ready font={pygame.font.get_init()} display={pygame.display.get_init()}")
 
     pygame.display.set_caption("Rouge gagne, Noir perd")
     screen = pygame.display.set_mode(_initial_size(), pygame.RESIZABLE)
     clock = pygame.time.Clock()
+    _browser_log(f"display-created size={screen.get_size()}")
 
     player = us.User(nickname="", avatar_index=0, initial_balance=30)
     betting = bt.Bet(min_amount=10, max_amount=1000, amount=10, turbo=1)
     card_game = gm.CardGame(screen, player, betting)
+    _browser_log(f"game-created state={card_game.state} size={screen.get_size()}")
 
     if sys.platform == "emscripten":
         import platform
@@ -55,6 +70,7 @@ async def main() -> None:
             loading.remove()
     running = True
     last_browser_size = screen.get_size()
+    first_frame = True
 
     while running and card_game.running:
         browser_size = _browser_viewport()
@@ -77,9 +93,21 @@ async def main() -> None:
             else:
                 card_game.handle_event(event)
 
-        card_game.update()
-        card_game.draw()
-        pygame.display.flip()
+        try:
+            card_game.update()
+            if first_frame:
+                _browser_log("first-update-ok")
+            card_game.draw()
+            if first_frame:
+                _browser_log("first-draw-ok")
+            pygame.display.flip()
+            if first_frame:
+                _browser_log("first-flip-ok")
+                first_frame = False
+        except Exception as exc:
+            _browser_log(f"FRAME-ERROR {type(exc).__name__}: {exc}")
+            raise
+
         if sys.platform != "emscripten":
             clock.tick(60)
         await asyncio.sleep(0)
