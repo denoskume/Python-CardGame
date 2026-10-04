@@ -5,6 +5,14 @@ sys.path.insert(0,str(Path('src').resolve()))
 import pygame
 
 class LayoutV2Tests(unittest.TestCase):
+    def test_start_action_is_centered_in_hero_area(self):
+        layout = compute_layout((960, 630), 'START_SCREEN')
+        play = layout['btn_play']
+        self.assertEqual(play.size, (220, 48))
+        self.assertEqual(play.centerx, 331)
+        self.assertEqual(play.y, 300)
+        self.assertLess(play.bottom, layout['card_0'].top)
+
     def test_controls_stay_inside_viewport(self):
         from layout import compute_layout
         for size in [(360,640),(390,844),(844,390),(960,630),(1440,900)]:

@@ -93,7 +93,12 @@ def buttons(game,layout,fonts):
             if action.startswith('turbo_'): label='×'+action[-1]
             if action=='sound': label='Sound on' if game.settings.sound_enabled else 'Sound off'
             if action=='quit' and __import__('sys').platform=='emscripten': label='Home'
-            text(game.screen,fonts,label,rect.center,'body',TEXT if enabled else (89,97,108),True,max_width=rect.width-8)
+            label_color=TEXT if enabled else (89,97,108)
+            if action=='play' and enabled:
+                pygame.draw.polygon(game.screen,TEXT,[(rect.left+38,rect.centery-10),(rect.left+38,rect.centery+10),(rect.left+54,rect.centery)])
+                text(game.screen,fonts,label.upper(),(rect.centerx+12,rect.centery),'body',label_color,True,max_width=rect.width-58)
+            else:
+                text(game.screen,fonts,label,rect.center,'body',label_color,True,max_width=rect.width-8)
         if game.focus_action==action:
             pygame.draw.rect(game.screen,GOLD,rect.inflate(6,6),2,border_radius=12)
 
