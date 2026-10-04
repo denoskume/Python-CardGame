@@ -35,6 +35,13 @@ class MainEntryContractTests(unittest.TestCase):
         )
         self.assertTrue(has_async_yield)
 
+    def test_freetype_backend_is_enabled_before_pygame_import(self):
+        setting = 'os.environ.setdefault("PYGAME_FREETYPE", "1")'
+        pygame_import = "import pygame"
+        self.assertIn(setting, self.source)
+        self.assertIn(pygame_import, self.source)
+        self.assertLess(self.source.index(setting), self.source.index(pygame_import))
+
     def test_main_guard_uses_asyncio_run(self):
         self.assertIn("asyncio.run(main())", self.source)
 
