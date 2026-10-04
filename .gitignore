@@ -22,3 +22,8 @@ Thumbs.db
 
 # Logs
 *.log
+
+# V2 local profiles, preferences and staging
+data/profiles.json
+data/settings.json
+.web-src/

@@ -1,386 +1,280 @@
-"""Responsive rendering for every CardGame screen."""
-
+"""Read-only rendering: the controller owns state and all interactive geometry."""
+import math
 import pygame
-
-# QA viewports: 1440x900, 1024x768, 768x1024, 390x844, 844x390
-_BASE_CARD_IMAGES = {}
-_BASE_AVATARS = {}
-_BASE_LOGOS = {}
+from theme import BG,PANEL,LINE,TEXT,MUTED,RED,GREEN,GOLD
+from game_statistics import summarize_rounds
+from history_table import aggregate_players
 
 
-def _clamp(value, low, high):
-    return max(low, min(high, value))
-
-
-def _layout(game):
-    """Return adaptive geometry flags and spacing for the current viewport."""
-    portrait = game.h > game.w
-    compact = game.w < 700 or game.h < 520
-    very_small = game.w <= 430
-    scale = _clamp(min(game.w / 960, game.h / 630), 0.65, 1.45)
-    margin = int(_clamp(game.w * 0.035, 12, 42))
-    min_touch = 48 if compact else 42
-    return {
-        "portrait": portrait,
-        "compact": compact,
-        "very_small": very_small,
-        "scale": scale,
-        "margin": margin,
-        "min_touch": min_touch,
-    }
-
-
-def _sync_fonts(game):
-    cfg = _layout(game)
-    s = cfg["scale"]
-    game.font_title = pygame.font.SysFont("arial", int(_clamp(40 * s, 25, 50)), bold=True)
-    game.font_big = pygame.font.SysFont("arial", int(_clamp(28 * s, 20, 36)), bold=True)
-    game.font_norm = pygame.font.SysFont("arial", int(_clamp(22 * s, 17, 28)))
-    game.font_small = pygame.font.SysFont("arial", int(_clamp(18 * s, 14, 22)))
-    game.font_mono = pygame.font.SysFont("consolas", int(_clamp(18 * s, 14, 22)))
-    game.fonts = {"big": game.font_big, "small": game.font_small}
-
-
-def _remember_assets(game):
-    key = id(game)
-    if key not in _BASE_CARD_IMAGES:
-        _BASE_CARD_IMAGES[key] = (
-            game.card_img_front.copy() if game.card_img_front is not None else None,
-            game.card_img_back_red.copy() if game.card_img_back_red is not None else None,
-            game.card_img_back_black.copy() if game.card_img_back_black is not None else None,
-        )
-        _BASE_AVATARS[key] = [img.copy() if img is not None else None for img in game.avatar_imgs]
-        _BASE_LOGOS[key] = (
-            game.logo_back.copy() if game.logo_back is not None else None,
-            game.logo_front.copy() if game.logo_front is not None else None,
-        )
-
-
-def _sync_card_geometry(game):
-    """Keep cards readable and tappable across landscape and portrait layouts."""
-    _sync_fonts(game)
-    _remember_assets(game)
-    cfg = _layout(game)
-    margin = cfg["margin"]
-    gap = int(_clamp(game.w * (0.025 if cfg["portrait"] else 0.04), 8, 60))
-    max_w = 180 if not cfg["compact"] else 135
-    card_w = int(min(max_w, (game.w - 2 * margin - 2 * gap) / 3))
-    card_w = max(78, card_w)
-    card_h = int(card_w * 250 / 180)
-    max_h = int(game.h * (0.37 if cfg["portrait"] else 0.43))
-    if card_h > max_h:
-        card_h = max(110, max_h)
-        card_w = int(card_h * 180 / 250)
-
-    changed = card_w != game.card_width or card_h != game.card_height or gap != game.card_gap
-    game.card_width, game.card_height, game.card_gap = card_w, card_h, gap
-
-    key = id(game)
-    front, red, black = _BASE_CARD_IMAGES[key]
-    if front is not None:
-        game.card_img_front = pygame.transform.smoothscale(front, (card_w, card_h))
-        game.card_img_back_red = pygame.transform.smoothscale(red, (card_w, card_h))
-        game.card_img_back_black = pygame.transform.smoothscale(black, (card_w, card_h))
-
-    avatar_size = int(_clamp(70 * cfg["scale"], 48, 82))
-    game.avatar_imgs = [
-        pygame.transform.smoothscale(img, (avatar_size, avatar_size)) if img is not None else None
-        for img in _BASE_AVATARS[key]
-    ]
-
-    logo_w = int(_clamp(70 * cfg["scale"], 42, 80))
-    logo_h = int(logo_w * 100 / 70)
-    logo_back, logo_front = _BASE_LOGOS[key]
-    game.logo_back = pygame.transform.smoothscale(logo_back, (logo_w, logo_h)) if logo_back is not None else None
-    game.logo_front = pygame.transform.smoothscale(logo_front, (logo_w, logo_h)) if logo_front is not None else None
-
-    if changed and game.cards:
-        total = 3 * card_w + 2 * gap
-        start_x = (game.w - total) // 2
-        card_y = int(game.h * (0.48 if cfg["portrait"] else 0.43))
-        ordered = sorted(game.cards, key=lambda card: card.rect.centerx)
-        for index, card in enumerate(ordered):
-            card.rect = pygame.Rect(start_x + index * (card_w + gap), card_y, card_w, card_h)
-            card.img_front = game.card_img_front
-            card.img_back_red = game.card_img_back_red
-            card.img_back_black = game.card_img_back_black
-        game.is_swapping = False
-
-
-def _draw_center_text(game, text, y, font, color):
-    surf = font.render(text, True, color)
-    game.screen.blit(surf, surf.get_rect(center=(game.w // 2, int(y))))
-
-
-def _draw_button(game, rect, text, bg_color, text_color):
-    pygame.draw.rect(game.screen, bg_color, rect, border_radius=10)
-    pygame.draw.rect(game.screen, game.BLACK, rect, 2, border_radius=10)
-    label = game.font_norm.render(text, True, text_color)
-    game.screen.blit(label, label.get_rect(center=rect.center))
-
-
-def _draw_circle_timer(game, center, total_ms, elapsed_ms):
-    cfg = _layout(game)
-    radius = int(_clamp(40 * cfg["scale"], 28, 44))
-    pygame.draw.circle(game.screen, game.GREY, center, radius, 3)
-    remaining = max(0, total_ms - elapsed_ms)
-    seconds = (remaining // 1000) % 60
-    txt = game.font_big.render(f"00:{seconds:02d}", True, game.WHITE)
-    game.screen.blit(txt, txt.get_rect(center=center))
-
-
-def _draw_logo_cards(game):
-    if game.logo_back is None or game.logo_front is None:
-        return
-    cfg = _layout(game)
-    x = cfg["margin"] + 8
-    y = cfg["margin"] + 36
-    game.screen.blit(game.logo_back, (x + 28, y - 25))
-    game.screen.blit(game.logo_front, (x, y))
-
-
-def _draw_player_info(game):
-    if not game.user.nickname.strip():
-        return
-    cfg = _layout(game)
-    size = 48 if cfg["compact"] else 60
-    idx = game.user.avatar_index
-    x, y = cfg["margin"], cfg["margin"]
-    if game.avatar_imgs[idx] is not None:
-        avatar = pygame.transform.smoothscale(game.avatar_imgs[idx], (size, size))
-        game.screen.blit(avatar, (x, y))
-    name = game.font_big.render(game.user.nickname, True, game.WHITE)
-    game.screen.blit(name, (x + size + 12, y + size // 2 - name.get_height() // 2))
-
-
-def _phase_panel(game, title, subtitle):
-    cfg = _layout(game)
-    width = min(game.w - 2 * cfg["margin"], 620)
-    height = 120 if not cfg["compact"] else 105
-    top = cfg["margin"] + (62 if game.user.nickname.strip() else 10)
-    rect = pygame.Rect((game.w - width) // 2, top, width, height)
-    pygame.draw.rect(game.screen, (15, 15, 15), rect, border_radius=12)
-    pygame.draw.rect(game.screen, game.LIGHT, rect, 2, border_radius=12)
-    game.screen.blit(game.font_big.render(title, True, game.WHITE), (rect.x + 16, rect.y + 15))
-    sub = game.font_small.render(subtitle, True, game.LIGHT)
-    game.screen.blit(sub, (rect.x + 16, rect.y + height - sub.get_height() - 15))
-    elapsed = pygame.time.get_ticks() - game.state_start_time
-    _draw_circle_timer(game, (rect.right - 55, rect.centery), 10_000, elapsed)
+def text(screen,fonts,value,pos,kind='body',color=TEXT,center=False,max_width=None):
+    font=fonts[kind]
+    value=str(value)
+    if max_width:
+        while value and font.size(value)[0]>max_width:
+            value=value[:-2]+'…' if len(value)>2 else ''
+    surface=font.render(value,True,color)
+    rect=surface.get_rect(center=pos) if center else surface.get_rect(topleft=pos)
+    screen.blit(surface,rect)
     return rect
 
 
-def draw_pause_overlay(game):
-    _sync_card_geometry(game)
-    overlay = pygame.Surface((game.w, game.h), pygame.SRCALPHA)
-    overlay.fill((0, 0, 0, 165))
-    game.screen.blit(overlay, (0, 0))
-    _draw_center_text(game, "PAUSE", game.h * 0.42, game.font_title, game.YELLOW)
-    _draw_center_text(game, "Press SPACE to resume", game.h * 0.50, game.font_norm, game.LIGHT)
+def wrapped(screen,fonts,value,x,y,width,kind='body',color=MUTED):
+    words=value.split(); line=''
+    for word in words:
+        candidate=(line+' '+word).strip()
+        if fonts[kind].size(candidate)[0]>width and line:
+            text(screen,fonts,line,(x,y),kind,color)
+            y+=fonts[kind].get_linesize()+5
+            line=word
+        else: line=candidate
+    if line:
+        text(screen,fonts,line,(x,y),kind,color)
+        y+=fonts[kind].get_linesize()+5
+    return y
 
 
-def draw_start_screen(game):
-    _sync_card_geometry(game)
-    cfg = _layout(game)
-    game.screen.fill(game.DARK)
-    _draw_logo_cards(game)
-    _draw_center_text(game, "ROUGE GAGNE, NOIR PERD", game.h * 0.20, game.font_title, game.WHITE)
-    _draw_center_text(game, "Tap or click to continue", game.h * 0.29, game.font_norm, game.LIGHT)
-
-    width = min(game.w - 2 * cfg["margin"], 680)
-    panel_h = min(240, int(game.h * 0.36))
-    panel = pygame.Rect((game.w - width) // 2, int(game.h * 0.38), width, panel_h)
-    pygame.draw.rect(game.screen, (15, 15, 15), panel, border_radius=12)
-    pygame.draw.rect(game.screen, game.LIGHT, panel, 2, border_radius=12)
-    title = game.font_small.render("Recent attempts", True, game.LIGHT)
-    game.screen.blit(title, (panel.x + 16, panel.y + 12))
-    if not game.global_history:
-        msg = game.font_small.render("No game has been recorded yet.", True, game.LIGHT)
-        game.screen.blit(msg, (panel.x + 16, panel.y + 48))
-        return
-    rows = game.global_history[-3 if cfg["compact"] else 5:][::-1]
-    y = panel.y + 46
-    for row in rows:
-        text = f"#{row.get('round','?')}  {row.get('player','-') or '-'}  {row.get('result','')}  {row.get('bet',0)}$ ×{row.get('mult',1)}  → {row.get('balance_after',0)}$"
-        surf = game.font_small.render(text, True, game.LIGHT)
-        game.screen.blit(surf, (panel.x + 16, y))
-        y += surf.get_height() + 8
+def panel(screen,rect):
+    pygame.draw.rect(screen,PANEL,rect,border_radius=18)
+    pygame.draw.rect(screen,LINE,rect,1,border_radius=18)
 
 
-def draw_menu(game):
-    _sync_card_geometry(game)
-    cfg = _layout(game)
-    game.screen.fill(game.DARK)
-    title_y = cfg["margin"] + max(24, game.font_title.get_height() // 2)
-    title_clearance = game.font_title.get_height() // 2 + 16
-    _draw_center_text(game, "GAME MENU", title_y, game.font_title, game.WHITE)
-    width = min(game.w - 2 * cfg["margin"], 760)
-    default_panel_top = 90 if game.h >= 600 else 62
-    panel_top = max(default_panel_top, title_y + title_clearance)
-    panel = pygame.Rect((game.w - width) // 2, panel_top, width, game.h - panel_top - cfg["margin"])
-    pygame.draw.rect(game.screen, (15, 15, 15), panel, border_radius=14)
-    pygame.draw.rect(game.screen, game.LIGHT, panel, 2, border_radius=14)
-
-    input_width = min(300, game.w - 2 * cfg["margin"] - 30)
-    input_rect = pygame.Rect(game.w // 2 - input_width // 2, max(155, panel.y + 54), input_width, cfg["min_touch"])
-    pygame.draw.rect(game.screen, game.WHITE if game.active_input else game.GREY, input_rect, border_radius=8)
-    pygame.draw.rect(game.screen, game.BLACK, input_rect, 2, border_radius=8)
-    value = game.user.nickname if game.user.nickname else "Tap here to type..."
-    color = game.BLACK if game.user.nickname else (150, 150, 150)
-    txt = game.font_norm.render(value, True, color)
-    game.screen.blit(txt, (input_rect.x + 10, input_rect.centery - txt.get_height() // 2))
-
-    avatar_size = int(_clamp(game.w * 0.16, 54, 74))
-    spacing = max(16, int(game.w * 0.04))
-    total = 3 * avatar_size + 2 * spacing
-    start = (game.w - total) // 2
-    avatar_y = input_rect.bottom + 54
-    game.avatar_rects = [pygame.Rect(start + i * (avatar_size + spacing), avatar_y, avatar_size, avatar_size) for i in range(3)]
-    for idx, rect in enumerate(game.avatar_rects):
-        if game.avatar_imgs[idx] is not None:
-            game.screen.blit(pygame.transform.smoothscale(game.avatar_imgs[idx], rect.size), rect)
-        pygame.draw.rect(game.screen, game.GREEN if idx == game.user.avatar_index else game.WHITE, rect, 3 if idx == game.user.avatar_index else 1, border_radius=9)
-
-    enabled = 3 <= len(game.user.nickname.strip()) <= game.player_name_max_len
-    btn_w = min(240, game.w - 2 * cfg["margin"] - 30)
-    game.btn_continue = pygame.Rect((game.w - btn_w) // 2, min(panel.bottom - cfg["min_touch"] - 22, avatar_y + avatar_size + 70), btn_w, max(cfg["min_touch"], 50))
-    _draw_button(game, game.btn_continue, "Next", game.GREEN if enabled else game.GREY, game.BLACK)
-
-
-def draw_bet_screen(game):
-    _sync_card_geometry(game)
-    cfg = _layout(game)
-    game.screen.fill(game.DARK)
-    width = min(game.w - 2 * cfg["margin"], 820)
-    panel = pygame.Rect((game.w - width) // 2, cfg["margin"], width, game.h - 2 * cfg["margin"])
-    pygame.draw.rect(game.screen, (15, 15, 15), panel, border_radius=14)
-    pygame.draw.rect(game.screen, game.LIGHT, panel, 2, border_radius=14)
-    _draw_center_text(game, f"Hello {game.user.nickname}!", panel.y + 35, game.font_big, game.WHITE)
-    _draw_center_text(game, f"Balance: {game.user.balance}$", panel.y + 76, game.font_norm, game.LIGHT)
-
-    y = panel.y + 118
-    _draw_center_text(game, "Turbo", y, game.font_norm, game.WHITE)
-    button_w = int(_clamp((panel.width - 80) / 3, 70, 110))
-    gap = int(_clamp(panel.width * 0.035, 10, 24))
-    total = 3 * button_w + 2 * gap
-    start_x = panel.centerx - total // 2
-    game.attempt_rects = []
-    for idx, mult in enumerate((1, 2, 3)):
-        rect = pygame.Rect(start_x + idx * (button_w + gap), y + 28, button_w, cfg["min_touch"])
-        game.attempt_rects.append(rect)
-        affordable = game.bet.amount * mult <= game.user.balance
-        selected = game.bet.turbo == mult
-        color = game.GREEN if selected and affordable else game.GREY if affordable else (40, 40, 40)
-        _draw_button(game, rect, f"×{mult}", color, game.BLACK if affordable else game.LIGHT)
-
-    y += 100
-    _draw_center_text(game, f"Bet: {game.bet.amount}$", y, game.font_big, game.WHITE)
-    side = cfg["min_touch"]
-    minus = pygame.Rect(panel.centerx - 120, y + 30, side, side)
-    plus = pygame.Rect(panel.centerx + 120 - side, y + 30, side, side)
-    game._bet_minus_rect, game._bet_plus_rect = minus, plus
-    _draw_button(game, minus, "−", game.RED, game.WHITE)
-    _draw_button(game, plus, "+", game.GREEN, game.WHITE)
-
-    can_start = game.bet.is_valid(game.user.balance)
-    btn_w = min(260, panel.width - 40)
-    game.btn_start_round = pygame.Rect(panel.centerx - btn_w // 2, panel.bottom - cfg["min_touch"] - 20, btn_w, max(cfg["min_touch"], 50))
-    _draw_button(game, game.btn_start_round, "START", game.GREEN if can_start else game.GREY, game.BLACK)
-
-
-def _draw_phase_cards(game, title, subtitle):
-    _sync_card_geometry(game)
-    game.screen.fill(game.DARK)
-    _draw_player_info(game)
-    panel = _phase_panel(game, title, subtitle)
-    if game.cards and max(card.rect.bottom for card in game.cards) > game.h - 15:
-        offset = max(card.rect.bottom for card in game.cards) - (game.h - 15)
-        for card in game.cards:
-            card.rect.y -= offset
-    for card in game.cards:
-        card.img_front = game.card_img_front
-        card.img_back_red = game.card_img_back_red
-        card.img_back_black = game.card_img_back_black
-        card.draw(game.screen, game.fonts)
-    return panel
-
-
-def draw_show_backs(game):
-    _draw_phase_cards(game, "Step 1: watch the red card", "Cards are visible for 10 seconds.")
-
-
-def draw_shuffle(game):
-    _draw_phase_cards(game, "Step 2: card shuffling", "Track the red card as the positions change.")
-
-
-def draw_choose(game):
-    _draw_phase_cards(game, "Step 3: make your choice", "Tap a card before the timer ends.")
-    if game.selected_card_rect is not None:
-        pygame.draw.rect(game.screen, game.YELLOW, game.selected_card_rect.inflate(8, 8), 4, border_radius=12)
-
-
-def draw_result(game):
-    _sync_card_geometry(game)
-    cfg = _layout(game)
-    game.screen.fill(game.DARK)
-    title = "WON!" if game.round_result == "WIN" else "LOST..."
-    color = game.GREEN if game.round_result == "WIN" else game.RED
-    _draw_center_text(game, title, cfg["margin"] + 30, game.font_title, color)
-
-    last = game.round_history[-1] if game.round_history else {}
-    summary = f"Balance {game.user.balance}$   •   Bet {game.bet.amount}$ ×{game.bet.turbo}   •   {last.get('duration', 0):.2f}s"
-    _draw_center_text(game, summary, cfg["margin"] + 76, game.font_small, game.LIGHT)
-
-    for card in game.cards:
-        card.draw(game.screen, game.fonts)
-    if game.selected_card_rect is not None:
-        pygame.draw.rect(game.screen, game.YELLOW, game.selected_card_rect.inflate(8, 8), 4, border_radius=12)
-
-    button_h = max(cfg["min_touch"], 50)
-    gap = 12
-    labels = [("Menu", game.btn_main_menu, game.LIGHT), ("New round", game.btn_continue, game.GREEN), ("Quit", game.btn_exit, game.RED)]
-    if cfg["portrait"] or game.w < 700:
-        width = min(260, game.w - 2 * cfg["margin"])
-        y = game.h - (button_h * 3 + gap * 2 + cfg["margin"])
-        for label, rect, fill in labels:
-            rect.update((game.w - width) // 2, y, width, button_h)
-            if label != "New round" or game.user.balance >= game.bet.min:
-                _draw_button(game, rect, label, fill, game.BLACK if fill != game.RED else game.WHITE)
-            y += button_h + gap
+def card(screen,fonts,rect,revealed=False,is_red=False,selected=False):
+    shadow=rect.move(0,7)
+    pygame.draw.rect(screen,(6,9,13),shadow,border_radius=14)
+    fill=(242,236,222) if revealed else (30,37,47)
+    pygame.draw.rect(screen,fill,rect,border_radius=12)
+    pygame.draw.rect(screen,GOLD if selected else (72,80,93),rect,2,border_radius=12)
+    inner=rect.inflate(-14,-14)
+    if revealed:
+        color=RED if is_red else (35,40,48)
+        text(screen,fonts,'A', (rect.x+12,rect.y+10),'body',color)
+        radius=max(10,min(28,rect.width//5))
+        cx,cy=rect.center
+        if is_red:
+            pygame.draw.polygon(screen,color,[(cx,cy-radius*1.5),(cx+radius,cy),(cx,cy+radius*1.5),(cx-radius,cy)])
+        else:
+            pygame.draw.circle(screen,color,(cx,cy),radius)
+            pygame.draw.polygon(screen,color,[(cx,cy+radius//2),(cx-radius,cy+radius*1.5),(cx+radius,cy+radius*1.5)])
+        text(screen,fonts,'RED' if is_red else 'BLACK',(cx,rect.bottom-22),'tiny',color,True)
     else:
-        width = min(200, (game.w - 2 * cfg["margin"] - 2 * gap) // 3)
-        total = 3 * width + 2 * gap
-        x = (game.w - total) // 2
-        y = game.h - button_h - cfg["margin"]
-        for label, rect, fill in labels:
-            rect.update(x, y, width, button_h)
-            if label != "New round" or game.user.balance >= game.bet.min:
-                _draw_button(game, rect, label, fill, game.BLACK if fill != game.RED else game.WHITE)
-            x += width + gap
+        pygame.draw.rect(screen,(67,75,89),inner,1,border_radius=8)
+        clip=screen.get_clip();screen.set_clip(inner)
+        for offset in range(-inner.height,inner.width,12):
+            pygame.draw.line(screen,(43,52,65),(inner.x+offset,inner.top),(inner.x+offset+inner.height,inner.bottom))
+        screen.set_clip(clip)
+        cx,cy=rect.center
+        radius=max(12,rect.width//5)
+        pygame.draw.circle(screen,(25,31,39),(cx,cy),radius+7)
+        pygame.draw.polygon(screen,GOLD,[(cx,cy-radius),(cx+radius,cy),(cx,cy+radius),(cx-radius,cy)],2)
+        pygame.draw.circle(screen,GOLD,(cx,cy),3)
 
 
-def draw_game_over(game):
-    _sync_card_geometry(game)
-    cfg = _layout(game)
-    game.screen.fill(game.DARK)
-    _draw_center_text(game, "GAME OVER", cfg["margin"] + 34, game.font_title, game.RED)
-    total = len(game.round_history)
-    wins = sum(1 for row in game.round_history if row["result"] == "WIN")
-    losses = total - wins
-    net = sum((row["stake"] * 2 if row["result"] == "WIN" else -row["stake"]) for row in game.round_history)
-    lines = [
-        f"Rounds: {total}",
-        f"Wins: {wins}   Losses: {losses}",
-        f"Final balance: {game.user.balance}$",
-        f"Net gain: {net}$",
-    ]
-    y = int(game.h * 0.24)
-    for line in lines:
-        _draw_center_text(game, line, y, game.font_norm, game.LIGHT)
-        y += game.font_norm.get_height() + 16
+LABELS={'play':'Play now','help':'How to play','settings':'Settings','back':'Back','continue':'Continue',
+        'menu':'Profile','start':'Start round','next':'Play again','quit':'Exit','pause':'Pause','resume':'Resume',
+        'minus':'−','plus':'+','volume_down':'−','volume_up':'+','easy':'Easy','normal':'Normal','expert':'Expert'}
 
-    button_h = max(cfg["min_touch"], 50)
-    width = min(250, game.w - 2 * cfg["margin"])
-    game.btn_main_menu.update((game.w - width) // 2, game.h - 2 * button_h - cfg["margin"] - 12, width, button_h)
-    game.btn_exit.update((game.w - width) // 2, game.h - button_h - cfg["margin"], width, button_h)
-    _draw_button(game, game.btn_main_menu, "Main menu", game.GREEN, game.BLACK)
-    _draw_button(game, game.btn_exit, "Quit", game.RED, game.WHITE)
+
+def buttons(game,layout,fonts):
+    for key,rect in layout.items():
+        if not key.startswith('btn_'): continue
+        action=key[4:]
+        selected=(action==game.settings.difficulty or action==f'turbo_{game.bet.turbo}' or action==f'avatar_{game.user.avatar_index}')
+        primary=action in ('play','continue','start','next','resume')
+        enabled=game.enabled(action)
+        hover=game.hover_action==action
+        fill=RED if primary and enabled else (45,53,64) if hover and enabled else PANEL
+        border=GOLD if selected else (78,87,101) if hover else LINE
+        pygame.draw.rect(game.screen,fill,rect,border_radius=10)
+        pygame.draw.rect(game.screen,border,rect,2 if selected else 1,border_radius=10)
+        if action.startswith('avatar_'):
+            game.screen.blit(game.resources['avatars'][int(action[-1])],(rect.centerx-24,rect.centery-24))
+        else:
+            label=LABELS.get(action,action)
+            if action.startswith('turbo_'): label='×'+action[-1]
+            if action=='sound': label='Sound on' if game.settings.sound_enabled else 'Sound off'
+            if action=='quit' and __import__('sys').platform=='emscripten': label='Home'
+            text(game.screen,fonts,label,rect.center,'body',TEXT if enabled else (89,97,108),True,max_width=rect.width-8)
+        if game.focus_action==action:
+            pygame.draw.rect(game.screen,GOLD,rect.inflate(6,6),2,border_radius=12)
+
+
+def header(game,fonts):
+    s=game.screen
+    margin=max(16,min(48,game.w//28))
+    pygame.draw.polygon(s,RED,[(margin,38),(margin+10,23),(margin+20,38),(margin+10,53)])
+    text(s,fonts,'ROUGE GAGNE',(margin+30,20),'small')
+    text(s,fonts,'NOIR PERD',(margin+30,41),'tiny',MUTED)
+    if game.state in ('SHOW_BACKS','SHUFFLE','CHOOSE','BET_SETUP'):
+        return
+    if game.w>520:
+        text(s,fonts,'A GAME OF FOCUS',(game.w//2,38),'tiny',MUTED,True)
+    text(s,fonts,'V2.0',(game.w-margin-34,32),'tiny',GOLD)
+
+
+def title(game,fonts,label,subtitle=''):
+    y=96
+    text(game.screen,fonts,label,(game.w//2,y+12),'title',TEXT,True,max_width=game.w-32)
+    if subtitle and game.h>=500:
+        text(game.screen,fonts,subtitle,(game.w//2,y+48),'small',MUTED,True,max_width=game.w-32)
+
+
+def home(game,layout,fonts):
+    s=game.screen;w,h=game.w,game.h
+    short=h<500;wide=w>=850 and not short
+    left=layout['content'].x
+    if short:
+        text(s,fonts,'Follow the red. Trust your focus.',(w//2,111),'title',TEXT,True)
+        y=154
+        for i in range(3):
+            r=pygame.Rect(w//2-130+i*92,y,76,112)
+            card(s,fonts,r,True,i==1)
+        return
+    if wide:
+        text(s,fonts,'OBSERVE. TRACK. CHOOSE.',(left,120),'tiny',GOLD)
+        text(s,fonts,'Follow the red.',(left,151),'hero')
+        text(s,fonts,'Trust your focus.',(left,207),'hero')
+        wrapped(s,fonts,'Three cards. One red. A moving challenge for your visual memory.',left,276,int(w*.38))
+        hero_x=left+45
+        for i in range(3): card(s,fonts,pygame.Rect(hero_x+i*114,358,98,142),True,i==1)
+        history_rect=pygame.Rect(w//2+28,124,w//2-left-28,h-238)
+    else:
+        text(s,fonts,'Follow the red.',(w//2,121),'hero',TEXT,True)
+        text(s,fonts,'Trust your focus.',(w//2,160),'hero',TEXT,True)
+        text(s,fonts,'Three cards. One sharp eye.',(w//2,201),'small',MUTED,True)
+        for i in range(3): card(s,fonts,pygame.Rect(w//2-139+i*97,233,84,122),True,i==1)
+        history_rect=pygame.Rect(left,386,layout['content'].width,h-488)
+    if history_rect.height>=90:
+        panel(s,history_rect)
+        text(s,fonts,'RECENT PLAYERS',(history_rect.x+20,history_rect.y+20),'tiny',GOLD)
+        rows=aggregate_players(game.global_history,limit=max(1,(history_rect.height-68)//48))
+        if not rows:
+            wrapped(s,fonts,'Your first round starts here. Results will appear after you play.',history_rect.x+20,history_rect.y+53,history_rect.width-40,'small')
+        else:
+            for i,row in enumerate(rows):
+                y=history_rect.y+54+i*48
+                text(s,fonts,row['player'],(history_rect.x+20,y),'body',TEXT,max_width=history_rect.width-130)
+                text(s,fonts,f"{row['wins']}W / {row['losses']}L",(history_rect.x+20,y+22),'tiny',MUTED)
+                text(s,fonts,f"{row['goal']:+} cr",(history_rect.right-94,y+7),'body',GREEN if row['goal']>=0 else RED)
+
+
+def profile(game,layout,fonts):
+    title(game,fonts,'Take your seat','Your profile keeps its balance on this device.')
+    r=layout['name_input']
+    text(game.screen,fonts,'PLAYER NAME · 3–20 CHARACTERS',(r.x,r.y-24),'tiny',GOLD)
+    pygame.draw.rect(game.screen,PANEL,r,border_radius=10)
+    pygame.draw.rect(game.screen,GOLD if game.active_input else LINE,r,2,border_radius=10)
+    text(game.screen,fonts,game.user.nickname or 'Enter your name',(r.x+16,r.y+15),'body',TEXT if game.user.nickname else MUTED,max_width=r.width-32)
+    avatar=layout['btn_avatar_0']
+    text(game.screen,fonts,'CHOOSE YOUR AVATAR',(game.w//2,avatar.y-16),'tiny',MUTED,True)
+    if game.h>=500:
+        text(game.screen,fonts,'30 welcome credits for each new profile.',(game.w//2,avatar.bottom+38),'small',MUTED,True,max_width=game.w-32)
+        text(game.screen,fonts,'Returning players keep their saved balance.',(game.w//2,avatar.bottom+62),'small',MUTED,True,max_width=game.w-32)
+
+
+def bet_screen(game,layout,fonts):
+    s=game.screen;h=game.h
+    title(game,fonts,'Make your move',f'{game.user.name}  ·  {game.user.balance} credits available')
+    r=layout['btn_minus']
+    if h<500:
+        text(s,fonts,f'{game.user.balance} credits available',(game.w//2,136),'small',MUTED,True)
+    text(s,fonts,str(game.bet.amount),(game.w//2,r.centery),'number',TEXT,True)
+    if h>=500:
+        text(s,fonts,'BASE STAKE',(game.w//2,r.y-28),'tiny',GOLD,True)
+        avatar=game.resources['avatars'][game.user.avatar_index]
+        s.blit(avatar,(game.w//2-154,168 if h<700 else 195))
+    y=layout['btn_turbo_1'].bottom+24
+    if h>=500:
+        text(s,fonts,f'Total stake  {game.bet.stake()} credits',(game.w//2,y),'body',TEXT,True)
+        text(s,fonts,f'{game.settings.difficulty.title()} difficulty · 10 seconds to choose',(game.w//2,y+30),'small',MUTED,True,max_width=game.w-28)
+        text(s,fonts,'Find red: +stake. Miss or time out: −stake.',(game.w//2,y+55),'small',MUTED,True,max_width=game.w-28)
+    else:
+        text(s,fonts,f'Total {game.bet.stake()} cr · {game.settings.difficulty.title()}',(game.w//2,y-8),'small',GOLD,True)
+
+
+def table(game,layout,fonts):
+    s=game.screen;state=game.state
+    paused=state=='PAUSE'
+    actual=game.state_before_pause if paused else state
+    result=state=='RESULT'
+    labels={'SHOW_BACKS':('01','Remember the red','Its identity stays with the same card.'),
+            'SHUFFLE':('02','Keep your eyes on it','Follow the movement.'),
+            'CHOOSE':('03','Which card is red?','Tap a card or press 1, 2, 3.')}
+    if result:
+        label='You found it.' if game.round_result=='WIN' else 'Time ran out.' if game.selected_card_index is None else 'A close one.'
+        gain=game.round_history[-1]['stake'] if game.round_history else 0
+        title(game,fonts,label,f"{'+' if game.round_result=='WIN' else '−'}{gain} credits  ·  Balance {game.user.balance}")
+        if game.h<500:
+            text(s,fonts,f"{'+' if game.round_result=='WIN' else '−'}{gain} cr · Balance {game.user.balance}",(game.w//2,146),'small',MUTED,True)
+    else:
+        num,label,hint=labels.get(actual,labels['SHOW_BACKS'])
+        title(game,fonts,label,hint if game.h>=500 else '')
+        elapsed=(game.pause_start if paused else pygame.time.get_ticks())-game.state_start_time
+        remaining=max(0,10000-elapsed)
+        y=174 if game.h>=500 else 128
+        width=min(420,game.w-80)
+        pygame.draw.rect(s,LINE,(int((game.w-width)/2),y,int(width),3),border_radius=2)
+        pygame.draw.rect(s,RED,(int((game.w-width)/2),y,round(width*remaining/10000),3),border_radius=2)
+        text(s,fonts,f'{math.ceil(remaining/1000):02d}s',(game.w//2,y+23),'small',GOLD,True)
+    for index,c in enumerate(game.cards):
+        card(s,fonts,c.rect,c.face=='BACK',c.is_red,index==game.selected_card_index)
+        if actual=='CHOOSE': text(s,fonts,str(c.slot+1),(c.rect.centerx,c.rect.bottom+23),'small',MUTED,True)
+    if game.h>=500:
+        text(s,fonts,f'{game.user.name}  /  {game.round_difficulty.upper()}  /  {getattr(game,"round_stake",10)} CREDITS',(game.w//2,game.h-106),'tiny',MUTED,True,max_width=game.w-24)
+    if paused:
+        overlay=pygame.Surface((game.w,game.h),pygame.SRCALPHA);overlay.fill((9,12,17,224));s.blit(overlay,(0,0))
+        text(s,fonts,'Take a breath.',(game.w//2,game.h*.42),'hero',TEXT,True,max_width=game.w-32)
+        text(s,fonts,'Your cards and timer are on hold.',(game.w//2,game.h*.42+50),'small',MUTED,True,max_width=game.w-32)
+
+
+def settings_screen(game,layout,fonts):
+    title(game,fonts,'Find your rhythm','Difficulty and sound')
+    y=layout['btn_easy'].y
+    if game.h>=500:
+        text(game.screen,fonts,'SHUFFLE DIFFICULTY',(game.w//2,y-26),'tiny',GOLD,True)
+        text(game.screen,fonts,'Normal adapts as your winning streak grows.',(game.w//2,y+196),'small',MUTED,True,max_width=game.w-32)
+    r=layout['btn_volume_down']
+    text(game.screen,fonts,f'{round(game.settings.volume*100)}%',(game.w//2,r.centery),'body',TEXT,True)
+
+
+def help_screen(game,layout,fonts):
+    title(game,fonts,'How to play')
+    x=layout['content'].x+10;width=layout['content'].width-20
+    y=150 if game.h>=500 else 143
+    items=[('01  OBSERVE','Remember the red card. You have 10 seconds.'),
+           ('02  FOLLOW','The cards turn over and exchange positions for 10 seconds.'),
+           ('03  CHOOSE','Select red before the 10-second timer ends. Red wins your stake; a miss or timeout loses it.')]
+    for heading,body in items:
+        text(game.screen,fonts,heading,(x,y),'tiny',GOLD);y+=22
+        y=wrapped(game.screen,fonts,body,x,y,width,'small')+12
+    if game.h>=500:
+        y=wrapped(game.screen,fonts,'Mouse or touch to play. Tab + Enter for controls. 1 / 2 / 3 choose a card. Space pauses an active round.',x,y+5,width,'small')
+        wrapped(game.screen,fonts,'Fictitious credits only. Profiles and history stay on this device; clearing browser data removes them.',x,y+12,width,'small')
+
+
+def game_over(game,layout,fonts):
+    title(game,fonts,'Session complete','Your saved balance is below the 10-credit minimum.')
+    summary=summarize_rounds(game.round_history)
+    y=200 if game.h>=500 else 178
+    text(game.screen,fonts,f'{game.user.balance} credits',(game.w//2,y),'number',TEXT,True)
+    text(game.screen,fonts,f"{summary['wins']} wins   /   {summary['losses']} losses   /   {summary['net']:+} net",(game.w//2,y+55),'body',MUTED,True,max_width=game.w-32)
+    if game.h>=500:
+        rate='—' if summary['win_rate'] is None else f"{summary['win_rate']:.0f}%"
+        text(game.screen,fonts,'Win rate  '+rate,(game.w//2,y+84),'small',GOLD,True)
+        text(game.screen,fonts,'You can return to choose another profile.',(game.w//2,y+105),'small',MUTED,True,max_width=game.w-32)
+
+
+def draw_screen(game,layout,resources):
+    fonts=resources['fonts'];s=game.screen
+    s.blit(resources['background'],(0,0));header(game,fonts)
+    state=game.state
+    if state=='START_SCREEN': home(game,layout,fonts)
+    elif state=='MENU': profile(game,layout,fonts)
+    elif state=='BET_SETUP': bet_screen(game,layout,fonts)
+    elif state=='HELP': help_screen(game,layout,fonts)
+    elif state=='SETTINGS': settings_screen(game,layout,fonts)
+    elif state=='GAME_OVER': game_over(game,layout,fonts)
+    else: table(game,layout,fonts)
+    buttons(game,layout,fonts)
+    footer='FICTITIOUS CREDITS · LOCAL PLAY'
+    if game.storage_notice: footer=game.storage_notice
+    text(s,fonts,footer,(game.w//2,game.h-12),'tiny',GOLD if game.storage_notice else MUTED,True,max_width=game.w-24)

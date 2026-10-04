@@ -14,27 +14,6 @@ import pygame
 import user as us
 import bet as bt
 import game as gm
-import dashboard as db
-import bet_avatar_return
-import desktop_menu
-import dynamic_difficulty
-import history_table
-import menu_input
-import player_profiles
-import web_history
-import welcome_balance_ui
-
-
-desktop_menu.install(db)
-welcome_balance_ui.install(db)
-history_table.install(db)
-bet_avatar_return.install(db, gm)
-menu_input.install(gm)
-web_history.install(gm)
-player_profiles.install(gm)
-dynamic_difficulty.install(gm)
-
-
 def _browser_viewport():
     """Return the current browser viewport when running through Pygbag."""
     if sys.platform != "emscripten":
@@ -58,13 +37,8 @@ def _initial_size():
 
 async def main() -> None:
     pygame.mixer.pre_init(44100, -16, 2, 512)
-    pygame.init()
-
-    if pygame.mixer.get_init() is None:
-        try:
-            pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
-        except pygame.error as exc:
-            print(f"⚠ Audio unavailable; continuing without sound: {exc}")
+    pygame.display.init()
+    pygame.font.init()
 
     pygame.display.set_caption("Rouge gagne, Noir perd")
     screen = pygame.display.set_mode(_initial_size(), pygame.RESIZABLE)
@@ -74,15 +48,20 @@ async def main() -> None:
     betting = bt.Bet(min_amount=10, max_amount=1000, amount=10, turbo=1)
     card_game = gm.CardGame(screen, player, betting)
 
+    if sys.platform == "emscripten":
+        import platform
+        loading = platform.window.document.getElementById('cardgame-loading')
+        if loading is not None:
+            loading.remove()
     running = True
     last_browser_size = screen.get_size()
 
-    while running:
+    while running and card_game.running:
         browser_size = _browser_viewport()
         if browser_size is not None and browser_size != last_browser_size:
             screen = pygame.display.set_mode(browser_size, pygame.RESIZABLE)
             card_game.screen = screen
-            card_game.w, card_game.h = screen.get_size()
+            card_game.resize(screen.get_size())
             last_browser_size = browser_size
 
         for event in pygame.event.get():
@@ -93,7 +72,7 @@ async def main() -> None:
                 height = max(300, event.h)
                 screen = pygame.display.set_mode((width, height), pygame.RESIZABLE)
                 card_game.screen = screen
-                card_game.w, card_game.h = screen.get_size()
+                card_game.resize(screen.get_size())
                 last_browser_size = screen.get_size()
             else:
                 card_game.handle_event(event)
@@ -101,7 +80,8 @@ async def main() -> None:
         card_game.update()
         card_game.draw()
         pygame.display.flip()
-        clock.tick(60)
+        if sys.platform != "emscripten":
+            clock.tick(60)
         await asyncio.sleep(0)
 
     pygame.quit()

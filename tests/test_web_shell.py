@@ -44,6 +44,18 @@ class WebShellTests(unittest.TestCase):
         self.assertIn('user_canvas_managed : 1', html)
         self.assertNotIn('user_canvas_managed : 0', html)
 
+    def test_build_exposes_loading_and_recovery(self):
+        from html.parser import HTMLParser
+        class Elements(HTMLParser):
+            def __init__(self): super().__init__(); self.ids=set()
+            def handle_starttag(self,tag,attrs):
+                self.ids.update(value for key,value in attrs if key=='id')
+        with tempfile.TemporaryDirectory() as tmp:
+            index=Path(tmp)/'index.html';index.write_text(SAMPLE_HTML)
+            patch(index)
+            parser=Elements();parser.feed(index.read_text())
+            self.assertTrue({'cardgame-loading','cardgame-load-status','cardgame-retry'} <= parser.ids)
+
 
 if __name__ == "__main__":
     unittest.main()

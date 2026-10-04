@@ -9,7 +9,8 @@ class PagesWorkflowTests(unittest.TestCase):
         content = path.read_text(encoding="utf-8")
         for required in (
             "workflow_dispatch:",
-            "branches: [main]",
+            "pull_request:",
+            "refs/heads/main",
             "pages: write",
             "id-token: write",
             "actions/setup-python",
