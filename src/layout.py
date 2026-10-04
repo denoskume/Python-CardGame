@@ -17,7 +17,19 @@ def compute_layout(size: tuple[int,int], state: str) -> dict[str, pygame.Rect]:
         start=(w-(bw*len(names)+gap*(len(names)-1)))//2
         for i,name in enumerate(names): button(name,start+i*(bw+gap),h-72,bw)
     if state=='START_SCREEN':
-        bottom(['play','help','settings'])
+        # Keep the primary CTA in the hero area; secondary actions remain in the footer.
+        if short:
+            button('play',w//2-110,max(250,h-150),220)
+        elif w>=850:
+            hero_center = left + min(width//2, width//3)
+            button('play',hero_center-110,300,220)
+        else:
+            button('play',w//2-110,min(h-150,380),220)
+        gap=10
+        bw=min(220,(width-gap)//2)
+        start=(w-(bw*2+gap))//2
+        button('help',start,h-72,bw)
+        button('settings',start+bw+gap,h-72,bw)
     elif state=='MENU':
         field_w=min(420,width)
         y=170 if short else int(h*.32)
