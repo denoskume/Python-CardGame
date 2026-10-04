@@ -4,7 +4,7 @@ import sys
 
 
 FULL_VIEWPORT_STYLE = """
-<style id=\"full-viewport-shell\">
+<style id="full-viewport-shell">
 html, body {
     width: 100vw !important;
     height: 100vh !important;
@@ -25,7 +25,7 @@ canvas.emscripten, #canvas {
 """
 
 FULL_VIEWPORT_SCRIPT = """
-<script id=\"full-viewport-runtime\">
+<script id="full-viewport-runtime">
 function syncViewportFramebuffer() {
     const width = Math.max(320, window.innerWidth || document.documentElement.clientWidth || 1280);
     const height = Math.max(300, window.innerHeight || document.documentElement.clientHeight || 720);
@@ -75,6 +75,13 @@ setTimeout(cardgameLoadFailed,60000);
 """
 
 
+def _replace_once(html: str, pattern: str, replacement: str, label: str) -> str:
+    updated, count = re.subn(pattern, replacement, html, count=1)
+    if count != 1:
+        raise RuntimeError(f"Expected Pygbag config field was not found: {label}")
+    return updated
+
+
 def patch(index_path: Path) -> None:
     html = index_path.read_text(encoding="utf-8")
 
@@ -82,41 +89,43 @@ def patch(index_path: Path) -> None:
         'platform.document.body.style.background = "#7f7f7f"',
         'platform.document.body.style.background = "#181818"',
     )
-    html, count_user = re.subn(r"user_canvas\s*:\s*0", "user_canvas : 1", html, count=1)
-    html, count_managed = re.subn(
-        r"user_canvas_managed\s*:\s*0",
-        "user_canvas_managed : 1",
-        html,
-        count=1,
-    )
-    html, count_ar = re.subn(
-        r"fb_ar\s*:\s*1\.77",
-        "fb_ar : window.innerWidth / Math.max(1, window.innerHeight)",
-        html,
-        count=1,
-    )
-    html, count_w = re.subn(
-        r'fb_width\s*:\s*"1280"',
-        'fb_width : String(window.innerWidth)',
-        html,
-        count=1,
-    )
-    html, count_h = re.subn(
-        r'fb_height\s*:\s*"720"',
-        'fb_height : String(window.innerHeight)',
-        html,
-        count=1,
-    )
 
-    if not (count_user and count_managed and count_ar and count_w and count_h):
-        raise RuntimeError("Expected Pygbag canvas/framebuffer defaults were not found in index.html")
+    # Match both the released 0.9.3 template and current Pygbag templates.
+    # Pygbag may change its default framebuffer dimensions, so do not assume
+    # a particular numeric width/height here.
+    html = _replace_once(html, r"user_canvas\s*:\s*[01]", "user_canvas : 1", "user_canvas")
+    html = _replace_once(
+        html,
+        r"user_canvas_managed\s*:\s*[01]",
+        "user_canvas_managed : 1",
+        "user_canvas_managed",
+    )
+    html = _replace_once(
+        html,
+        r"fb_ar\s*:\s*(?:[0-9]+(?:\.[0-9]+)?|window\.innerWidth\s*/\s*Math\.max\([^\n]+\))",
+        "fb_ar : window.innerWidth / Math.max(1, window.innerHeight)",
+        "fb_ar",
+    )
+    html = _replace_once(
+        html,
+        r'fb_width\s*:\s*(?:"[0-9]+"|String\(window\.innerWidth\))',
+        'fb_width : String(window.innerWidth)',
+        "fb_width",
+    )
+    html = _replace_once(
+        html,
+        r'fb_height\s*:\s*(?:"[0-9]+"|String\(window\.innerHeight\))',
+        'fb_height : String(window.innerHeight)',
+        "fb_height",
+    )
 
     if 'id="full-viewport-shell"' not in html:
         html = html.replace("</head>", FULL_VIEWPORT_STYLE + "\n</head>", 1)
     if 'id="full-viewport-runtime"' not in html:
         html = html.replace("</body>", FULL_VIEWPORT_SCRIPT + "\n</body>", 1)
+    if 'id="cardgame-loading"' not in html:
+        html = html.replace("</body>", LOADING_SHELL + "\n</body>", 1)
 
-    html = html.replace("</body>", LOADING_SHELL + "\n</body>", 1)
     index_path.write_text(html, encoding="utf-8")
 
 
