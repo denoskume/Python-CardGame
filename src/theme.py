@@ -12,21 +12,49 @@ GREEN=(105,211,170)
 GOLD=(223,185,112)
 
 
+class SmoothFallbackFont:
+    """pygame.font-compatible fallback rendered at 2x then downsampled."""
+    def __init__(self,size,bold=False,scale=2):
+        self.target_size=max(1,int(size))
+        self.scale=max(2,int(scale))
+        self.source_size=self.target_size*self.scale
+        self._font=pygame.font.Font(None,self.source_size)
+        self._font.set_bold(bool(bold))
+
+    def render(self,value,antialias,color,*args,**kwargs):
+        surface=self._font.render(str(value),True,color,*args,**kwargs)
+        width=max(1,round(surface.get_width()/self.scale))
+        height=max(1,round(surface.get_height()/self.scale))
+        return pygame.transform.smoothscale(surface,(width,height))
+
+    def size(self,value):
+        width,height=self._font.size(str(value))
+        return max(1,round(width/self.scale)),max(1,round(height/self.scale))
+
+    def get_linesize(self):
+        return max(1,round(self._font.get_linesize()/self.scale))
+
+    def set_bold(self,bold):
+        self._font.set_bold(bool(bold))
+
+    def get_bold(self):
+        return self._font.get_bold()
+
+    def __getattr__(self,name):
+        return getattr(self._font,name)
+
+
 def _font(path, size, bold=False):
-    """Load the bundled font, falling back when SDL_ttf cannot render it."""
+    """Load the bundled font, falling back to supersampled text when needed."""
     try:
         font=pygame.font.Font(str(path),size)
-        # Construction can succeed even when SDL_ttf later returns a NULL
-        # glyph surface. Probe one glyph now so the fallback is deterministic.
         probe=font.render('A',True,TEXT)
         if probe.get_width()>0 and probe.get_height()>0:
             return font
     except (pygame.error, OSError, ValueError):
         pass
 
-    font=pygame.font.Font(None,size)
-    font.set_bold(bool(bold))
-    return font
+    return SmoothFallbackFont(size,bold)
 
 
 class ThemeResources:
@@ -46,7 +74,6 @@ class ThemeResources:
                                    ('tiny',10 if compact else 12,True),('number',32 if compact else 46,True)]}
         background=pygame.Surface(size)
         background.fill(BG)
-        # Subtle table lines add depth without competing with moving cards.
         for x in range(-h,w,64):
             pygame.draw.line(background,(19,23,29),(x,0),(x+h,h))
         pygame.draw.line(background,LINE,(0,77),(w,77))
