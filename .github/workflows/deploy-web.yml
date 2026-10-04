@@ -45,6 +45,58 @@ jobs:
         run: python -m compileall -q src
       - name: Build browser bundle
         run: bash scripts/build_web.sh
+      - name: Install browser smoke-test runtime
+        run: |
+          npm install --no-save playwright@1.55.0
+          npx playwright install --with-deps chromium
+      - name: Verify game renders in Chromium
+        run: |
+          python -m http.server 8000 --directory src/build/web >/tmp/cardgame-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill $server_pid || true' EXIT
+          node <<'NODE'
+          const { chromium } = require('playwright');
+          (async () => {
+            const browser = await chromium.launch({headless:true});
+            const page = await browser.newPage({viewport:{width:1365,height:600}});
+            const problems = [];
+            page.on('pageerror', err => problems.push('PAGEERROR: ' + err.message));
+            page.on('console', msg => {
+              if (msg.type() === 'error') problems.push('CONSOLE: ' + msg.text());
+            });
+            await page.goto('http://127.0.0.1:8000/', {waitUntil:'load', timeout:60000});
+            await page.mouse.click(680, 300);
+            await page.waitForTimeout(12000);
+            await page.screenshot({path:'/tmp/cardgame-browser.png'});
+            const canvas = await page.$('#canvas');
+            if (!canvas) problems.push('Canvas #canvas is missing');
+            const overlay = await page.$('#cardgame-loading');
+            if (overlay) {
+              const visible = await overlay.isVisible().catch(() => false);
+              if (visible) problems.push('Loading overlay is still visible after boot');
+            }
+            console.log(problems.join('\n'));
+            await browser.close();
+            if (problems.length) process.exit(2);
+          })().catch(err => { console.error(err); process.exit(3); });
+          NODE
+          python - <<'PY'
+          import pygame
+          img = pygame.image.load('/tmp/cardgame-browser.png')
+          w, h = img.get_size()
+          bright = 0
+          sampled = 0
+          for y in range(0, h, 4):
+              for x in range(0, w, 4):
+                  r, g, b, *_ = img.get_at((x, y))
+                  sampled += 1
+                  if max(r, g, b) >= 55:
+                      bright += 1
+          ratio = bright / max(1, sampled)
+          print(f'Browser screenshot visible-pixel ratio: {ratio:.4f}')
+          if ratio < 0.015:
+              raise SystemExit('Browser smoke test failed: rendered page is effectively black')
+          PY
       - uses: actions/configure-pages@v5
         if: github.ref == 'refs/heads/main'
       - uses: actions/upload-pages-artifact@v3
