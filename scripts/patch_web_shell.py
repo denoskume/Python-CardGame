@@ -53,6 +53,28 @@ window.addEventListener('load', () => setTimeout(syncViewportFramebuffer, 0));
 """
 
 
+LOADING_SHELL = """
+<section id="cardgame-loading" role="status" style="position:fixed;inset:0;display:grid;place-content:center;text-align:center;background:#0f1217;color:#f1eee7;font:18px system-ui;z-index:9000;pointer-events:none">
+  <h1 style="color:#c73647">Rouge gagne, noir perd</h1>
+  <p id="cardgame-load-status">Loading your table… First launch may take a moment.</p>
+  <p style="font-size:14px;color:#99a3b1">Click or tap to activate the game.</p>
+  <button id="cardgame-retry" hidden style="pointer-events:auto;padding:14px;background:#c73647;color:white;border:0;border-radius:8px" onclick="location.reload()">Try again</button>
+</section>
+<script>
+function cardgameLoadFailed() {
+  const overlay=document.getElementById('cardgame-loading');
+  if (overlay && !overlay.hidden) {
+    document.getElementById('cardgame-load-status').textContent='The game could not finish loading. Check your connection and try again.';
+    document.getElementById('cardgame-retry').hidden=false;
+  }
+}
+window.addEventListener('error',cardgameLoadFailed);
+window.addEventListener('unhandledrejection',cardgameLoadFailed);
+setTimeout(cardgameLoadFailed,60000);
+</script>
+"""
+
+
 def patch(index_path: Path) -> None:
     html = index_path.read_text(encoding="utf-8")
 
@@ -94,6 +116,7 @@ def patch(index_path: Path) -> None:
     if 'id="full-viewport-runtime"' not in html:
         html = html.replace("</body>", FULL_VIEWPORT_SCRIPT + "\n</body>", 1)
 
+    html = html.replace("</body>", LOADING_SHELL + "\n</body>", 1)
     index_path.write_text(html, encoding="utf-8")
 
 

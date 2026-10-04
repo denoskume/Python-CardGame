@@ -1,332 +1,152 @@
-"""Core game logic and finite-state controller.
-
-CardGame owns the round lifecycle, timers, card animation, input dispatch,
-result resolution, pause/resume behavior, optional audio, and JSON history.
-Rendering is delegated to dashboard.py.
-"""
-
-import pygame
+"""Explicit round controller shared by desktop and browser."""
+import math
 import random
+import sys
 import time
-import os
-import json
+from pathlib import Path
+import pygame
+from bet import Bet
+from user import User
+from storage import Storage, browser_storage, resolve_profile
+from settings import Settings, shuffle_timing
+from layout import compute_layout
+from theme import ThemeResources
+import dashboard
+import menu_input
 
-import user as us
-import bet as bt
-import dashboard as db
-
-# ===================== GAME STATES =====================
-STATE_START = "START_SCREEN"
-STATE_MENU = "MENU"
-STATE_BET = "BET_SETUP"
-STATE_SHOW_BACKS = "SHOW_BACKS"
-STATE_SHUFFLE = "SHUFFLE"
-STATE_CHOOSE = "CHOOSE"
-STATE_RESULT = "RESULT"
-STATE_GAME_OVER = "GAME_OVER"
-STATE_PAUSE = "PAUSE"
+STATE_START = 'START_SCREEN'
+STATE_MENU = 'MENU'
+STATE_BET = 'BET_SETUP'
+STATE_SHOW_BACKS = 'SHOW_BACKS'
+STATE_SHUFFLE = 'SHUFFLE'
+STATE_CHOOSE = 'CHOOSE'
+STATE_RESULT = 'RESULT'
+STATE_GAME_OVER = 'GAME_OVER'
+STATE_PAUSE = 'PAUSE'
+ACTIVE_STATES = (STATE_SHOW_BACKS, STATE_SHUFFLE, STATE_CHOOSE)
 
 
-# ===================== CARD CLASS =====================
 class Card:
-    """Represent one logical card while its rectangle moves during shuffling."""
-
-    def __init__(self, rect, is_red: bool, img_front=None, 
-        img_back_red=None, img_back_black=None):
-        """Create a card with logical color identity and optional image assets."""
-        self.rect = rect                            
-        self.is_red = is_red                 
-        self.face = "BACK"                  
-                            
-        # Optional images
-        self.img_front = img_front
-        self.img_back_red = img_back_red
-        self.img_back_black = img_back_black
-
-    def draw(self, screen, fonts):
-        """Draw the card asset or a fallback rectangle when images are unavailable."""
-        # If images are available, use them
-        if self.img_front is not None and self.img_back_red is not None and self.img_back_black is not None:
-            if self.face == "BACK":
-                img = self.img_back_red if self.is_red else self.img_back_black
-            else:
-                img = self.img_front
-            screen.blit(img, self.rect)
-        else:
-            # Fallback rectangles
-            if self.face == "BACK":
-                color = (200, 40, 40) if self.is_red else (20, 20, 20)
-                pygame.draw.rect(screen, color, self.rect, border_radius=10)
-                pygame.draw.rect(screen, (255, 255, 255), self.rect, 2, border_radius=10)
-                txt = fonts["small"].render("RED" if self.is_red else "BLACK", True, (255, 255, 255))
-                screen.blit(txt, txt.get_rect(center=self.rect.center))
-            else:
-                pygame.draw.rect(screen, (230, 230, 230), self.rect, border_radius=10)
-                pygame.draw.rect(screen, (0, 0, 0), self.rect, 2, border_radius=10)
-                txt = fonts["small"].render("CARD", True, (0, 0, 0))
-                screen.blit(txt, txt.get_rect(center=self.rect.center))
+    def __init__(self, rect, is_red, **images):
+        self.rect, self.is_red = rect, is_red
+        self.slot = 0
+        self.face = 'BACK'
 
 
-# ===================== CARD GAME CLASS =====================
 class CardGame:
-    """Coordinate the complete game lifecycle through explicit runtime states."""
-
-    def __init__(self, screen, user: us.User, bet: bt.Bet):
-        """Initialize UI geometry, assets, audio, timers, history, and state."""
+    def __init__(self, screen, user: User, bet: Bet, storage=None):
         self.screen = screen
         self.w, self.h = screen.get_size()
-
-        # External domain objects
-        self.user = user
-        self.bet = bet
-
-        # Buttons
-        self.btn_restart = pygame.Rect(self.w // 2 - 100, self.h - 120, 200, 50)
-        self.btn_main_menu = pygame.Rect(self.w // 2 - 220, self.h - 100, 200, 50)
-        self.btn_exit = pygame.Rect(self.w // 2 + 20, self.h - 100, 200, 50)
-
-        self.btn_continue = pygame.Rect(self.w // 2 - 100, self.h - 100, 200, 50)
-        self.btn_start_round = pygame.Rect(self.w // 2 - 100, self.h - 120, 200, 50)
-        self.btn_menu = pygame.Rect(self.w // 2 - 310, self.h - 70, 200, 50)
-        self.btn_quit = pygame.Rect(self.w // 2 + 110, self.h - 70, 200, 50)
-
-        # Fonts
-        self.font_title = pygame.font.SysFont("arial", 40, bold=True)
-        self.font_big = pygame.font.SysFont("arial", 28, bold=True)
-        self.font_norm = pygame.font.SysFont("arial", 22)
-        self.font_small = pygame.font.SysFont("arial", 18)
-        self.font_mono = pygame.font.SysFont("consolas", 18)
-
-        self.fonts = {"big": self.font_big, "small": self.font_small}
-
-        # Colors
-        self.WHITE = (255, 255, 255)
-        self.BLACK = (0, 0, 0)
-        self.RED = (200, 40, 40)
-        self.GREY = (60, 60, 60)
-        self.DARK = (25, 25, 25)
-        self.GREEN = (40, 160, 60)
-        self.LIGHT = (220, 220, 220)
-        self.YELLOW = (250, 230, 70)
-
-        # Global state
+        self.user, self.bet = user, bet
+        self.storage = storage or Storage(Path(__file__).resolve().parent.parent / 'data', browser_storage())
+        self.global_history = self._load_history()
+        self.player_profiles = self.storage.load_profiles()
+        self.settings = Settings.from_dict(self.storage.load_settings())
+        self.storage_notice = self.storage.last_error
+        self.active_profile_key = None
+        self.welcome_balance_granted_now = False
         self.state = STATE_START
-
-        # Menu / player
-        self.player_name_max_len = 20
-        self.active_input = False
-        self.avatar_rects = [
-            pygame.Rect(self.w // 2 - 150, 220, 70, 70),
-            pygame.Rect(self.w // 2 - 35, 220, 70, 70),
-            pygame.Rect(self.w // 2 + 80, 220, 70, 70),
-        ]
-
-        # Attempts buttons
-        self.attempt_rects = [
-            pygame.Rect(self.w // 2 - 150, 200, 80, 40),
-            pygame.Rect(self.w // 2 - 40, 200, 80, 40),
-            pygame.Rect(self.w // 2 + 70, 200, 80, 40),
-        ]
-
-        # Cards
-        self.cards = []
-        self.card_area_y = 260
-        self.card_width = 180
-        self.card_height = 250
-        self.card_gap = 60
-
-        # Assets
-        assets_dir = os.path.join(os.path.dirname(__file__), "assets")
-
-        # Card images
-        try:
-            front = pygame.image.load(os.path.join(assets_dir, "card_front.png")).convert_alpha()
-            back_red = pygame.image.load(os.path.join(assets_dir, "card_back_red.png")).convert_alpha()
-            back_black = pygame.image.load(os.path.join(assets_dir, "card_back_black.png")).convert_alpha()
-
-            self.card_img_front = pygame.transform.smoothscale(front, (self.card_width, self.card_height))
-            self.card_img_back_red = pygame.transform.smoothscale(back_red, (self.card_width, self.card_height))
-            self.card_img_back_black = pygame.transform.smoothscale(back_black, (self.card_width, self.card_height))
-        except Exception as e:
-            print("⚠ Could not load card images:", e)
-            self.card_img_front = None
-            self.card_img_back_red = None
-            self.card_img_back_black = None
-
-        # Avatars
-        try:
-            self.avatar_imgs = []
-            for name in ["avatar1.png", "avatar2.png", "avatar3.png"]:
-                img = pygame.image.load(os.path.join(assets_dir, name)).convert_alpha()
-                img = pygame.transform.smoothscale(img, (70, 70))
-                self.avatar_imgs.append(img)
-        except Exception as e:
-            print("⚠ Could not load avatars:", e)
-            self.avatar_imgs = [None, None, None]
-
-        # Logo cards for start screen
-        try:
-            self.logo_back = pygame.image.load(os.path.join(assets_dir, "card_logo_back.png")).convert_alpha()
-            self.logo_front = pygame.image.load(os.path.join(assets_dir, "card_logo_front.png")).convert_alpha()
-
-            self.logo_back = pygame.transform.smoothscale(self.logo_back, (70, 100))
-            self.logo_front = pygame.transform.smoothscale(self.logo_front, (70, 100))
-        except Exception as e:
-            print("⚠ Could not load logo cards:", e)
-            self.logo_back = None
-            self.logo_front = None
-
-        # Sounds (optional: the game still runs when no audio device is available)
-        self.snd_shuffle = None
-        self.snd_win = None
-        self.snd_lose = None
-        self.shuffle_channel = None
-        self.result_channel = None
-
-        if pygame.mixer.get_init() is not None:
-            try:
-                self.snd_shuffle = pygame.mixer.Sound(os.path.join(assets_dir, "shuffle.mp3"))
-                self.snd_win = pygame.mixer.Sound(os.path.join(assets_dir, "win.mp3"))
-                self.snd_lose = pygame.mixer.Sound(os.path.join(assets_dir, "lose.mp3"))
-
-                self.snd_shuffle.set_volume(0.6)
-                self.snd_win.set_volume(0.8)
-                self.snd_lose.set_volume(0.8)
-
-                self.shuffle_channel = pygame.mixer.Channel(1)
-                self.result_channel = pygame.mixer.Channel(2)
-            except pygame.error as e:
-                print(f"⚠ Audio disabled: {e}")
-        else:
-            print("⚠ Audio disabled: pygame mixer is not available.")
-
-        # Timers
-        self.state_start_time = 0
-        self.shuffle_interval = 300
-        self.last_shuffle_swap = 0
-
-        # Swap animation
-        self.is_swapping = False
-        self.swap_i = 0
-        self.swap_j = 1
-        self.swap_start_time = 0
-        self.swap_duration = 300
-        self.swap_rect_i_start = None
-        self.swap_rect_j_start = None
-        self.swap_rect_i_end = None
-        self.swap_rect_j_end = None
-
-        # Result
-        self.message = ""
-        self.round_result = None  # "WIN" / "LOSE"
-        self.selected_card_index = None
-        self.selected_card_rect = None
-
-        # Stats
-        self.round_history = []
-        self.current_round_start_time = None
-        self.total_time_played = 0.0
-
-        # Pause
+        self.overlay_return = STATE_START
         self.state_before_pause = None
         self.pause_start = 0
+        self.state_start_time = 0
+        self.current_round_start_time = None
+        self.round_history = []
+        self.total_time_played = 0
+        self.round_result = None
+        self.round_difficulty = self.settings.difficulty
+        self.selected_card_index = None
+        self.selected_card_rect = None
+        self.cards = []
+        self.card_width, self.card_height, self.card_gap, self.card_area_y = 180,250,60,260
+        self.card_img_front = self.card_img_back_red = self.card_img_back_black = None
+        self.is_swapping = False
+        self.swap_i, self.swap_j = 0,1
+        self.swap_start_time = self.last_shuffle_swap = 0
+        self.swap_slots = (0,1)
+        self.shuffle_interval, self.swap_duration = shuffle_timing(self.settings.difficulty,0)
+        self.consecutive_wins = 0
+        self.player_name_max_len = 20
+        self.active_input = False
+        self.focus_action = None
+        self.hover_action = None
+        self.message = ''
+        self.running = True
+        self.audio_attempted = False
+        self.snd_shuffle = self.snd_win = self.snd_lose = None
+        self.shuffle_channel = self.result_channel = None
+        self.theme = ThemeResources()
+        self.resources = self.theme.for_size((self.w,self.h))
+        self.layout = compute_layout((self.w,self.h),self.state)
+        self.name_input_rect = None
 
-        # JSON history (runtime data stored outside source code)
-        project_dir = os.path.dirname(os.path.dirname(__file__))
-        data_dir = os.path.join(project_dir, "data")
-        os.makedirs(data_dir, exist_ok=True)
-        self.history_file = os.path.join(data_dir, "history.json")
-        self.global_history = self._load_history()
 
-        # For bet widgets
-        self._bet_minus_rect = None
-        self._bet_plus_rect = None
-
-    # ---------- JSON HISTORY ----------
     def _load_history(self):
-        """Load persisted rounds, returning an empty list if history is unavailable."""
-        try:
-            if os.path.exists(self.history_file):
-                with open(self.history_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    if isinstance(data, list):
-                        return data
-        except Exception as e:
-            print("⚠ Error loading history.json:", e)
-        return []
+        return self.storage.load_history()
 
     def _save_history(self):
-        """Persist the bounded global round history as readable JSON."""
+        self.storage.save_history(self.global_history)
+        error = self.storage.last_error
+        if self.active_profile_key:
+            self.player_profiles[self.active_profile_key]['balance'] = self.user.balance
+            self.storage.save_profiles(self.player_profiles)
+        self.storage_notice = error or self.storage.last_error
+
+    def activate_profile(self):
+        self.consecutive_wins = 0
+        result = resolve_profile(self.player_profiles, self.user.name)
+        self.active_profile_key = result['key']
+        self.user.balance = result['balance']
+        self.welcome_balance_granted_now = result['welcome_granted_now']
+        self.storage.save_profiles(self.player_profiles)
+        self.storage_notice = self.storage.last_error
+        self.round_history.clear()
+        self.total_time_played = 0
+
+    def apply_settings(self, settings: Settings) -> None:
+        if self.settings.difficulty != settings.difficulty:
+            self.consecutive_wins = 0
+        self.settings = settings
+        self.storage.save_settings(settings.to_dict())
+        self.storage_notice = self.storage.last_error
+        if not settings.sound_enabled and pygame.mixer.get_init():
+            pygame.mixer.stop()
+
+    def enable_audio(self):
+        if self.audio_attempted or not self.settings.sound_enabled:
+            return
+        self.audio_attempted = True
         try:
-            with open(self.history_file, "w", encoding="utf-8") as f:
-                json.dump(self.global_history, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            print("⚠ Error saving history.json:", e)
+            if not pygame.mixer.get_init():
+                pygame.mixer.init()
+            assets = Path(__file__).parent / 'assets'
+            extension = '.ogg' if __import__('sys').platform == 'emscripten' else '.mp3'
+            self.snd_shuffle = pygame.mixer.Sound(str(assets / ('shuffle' + extension)))
+            self.snd_win = pygame.mixer.Sound(str(assets / ('win' + extension)))
+            self.snd_lose = pygame.mixer.Sound(str(assets / ('lose' + extension)))
+            self.shuffle_channel = pygame.mixer.Channel(1)
+            self.result_channel = pygame.mixer.Channel(2)
+        except (pygame.error, OSError):
+            self.shuffle_channel = self.result_channel = None
 
-    # ---------- EVENT HANDLERS FOR MENU ----------
-    def handle_start_event(self, event):
-        """Leave the splash screen after any keyboard or mouse input."""
-        if event.type in (pygame.MOUSEBUTTONDOWN, pygame.KEYDOWN):
-            self.state = STATE_MENU
+    def play_sound(self, name):
+        if not self.settings.sound_enabled:
+            return
+        sound = getattr(self, 'snd_' + name, None)
+        channel = self.shuffle_channel if name == 'shuffle' else self.result_channel
+        if sound is not None and channel is not None:
+            channel.set_volume(self.settings.volume)
+            channel.play(sound, maxtime=self.swap_duration if name == 'shuffle' else 0)
 
-    def handle_menu_event(self, event):
-        """Handle nickname editing, avatar selection, and profile validation."""
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            input_width = 300
-            input_rect = pygame.Rect(self.w // 2 - input_width // 2, 155, input_width, 40)
-            if input_rect.collidepoint(event.pos):
-                self.active_input = True
-            else:
-                self.active_input = False
-
-            for idx, rect in enumerate(self.avatar_rects):
-                if rect.collidepoint(event.pos):
-                    self.user.avatar_index = idx
-
-            if self.btn_continue.collidepoint(event.pos):
-                name_len = len(self.user.nickname.strip())
-                if 3 <= name_len <= self.player_name_max_len:
-                    self.state = STATE_BET
-
-        elif event.type == pygame.KEYDOWN and self.active_input:
-            if event.key == pygame.K_BACKSPACE:
-                self.user.nickname = self.user.nickname[:-1]
-            elif event.key == pygame.K_RETURN:
-                name_len = len(self.user.nickname.strip())
-                if 3 <= name_len <= self.player_name_max_len:
-                    self.state = STATE_BET
-            else:
-                if len(self.user.nickname) < self.player_name_max_len:
-                    if event.unicode.isprintable():
-                        self.user.nickname += event.unicode
-
-    # ---------- BET SCREEN EVENTS ----------
-    def handle_bet_event(self, event):
-        """Handle turbo selection, bet adjustment, and round start requests."""
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            pos = event.pos
-
-            # Choose turbo
-            for idx, rect in enumerate(self.attempt_rects):
-                if rect.collidepoint(pos):
-                    self.bet.set_turbo(idx + 1)
-
-            # Bet -
-            if self._bet_minus_rect is not None and self._bet_minus_rect.collidepoint(pos):
-                self.bet.decrease(step=5)
-
-            # Bet +
-            elif self._bet_plus_rect is not None and self._bet_plus_rect.collidepoint(pos):
-                self.bet.increase(step=5, balance=self.user.balance)
-
-            # START round
-            can_start = self.bet.is_valid(self.user.balance)
-            if can_start and self.btn_start_round.collidepoint(pos):
-                self.start_round()
-
-    # ---------- START A ROUND ----------
     def start_round(self):
         """Create three cards, choose the red card, and start observation."""
+        if not self.bet.is_valid(self.user.balance):
+            return
+        self.round_difficulty = self.settings.difficulty
+        self.shuffle_interval, self.swap_duration = shuffle_timing(self.round_difficulty, self.consecutive_wins)
+        self.round_stake = self.bet.stake()
+        self.round_bet = self.bet.amount
+        self.round_multiplier = self.bet.turbo
         # Compute three evenly spaced card slots centered in the game window.
         total_width = 3 * self.card_width + 2 * self.card_gap
         start_x = (self.w - total_width) // 2
@@ -351,6 +171,7 @@ class CardGame:
                 img_back_black=self.card_img_back_black
             )
             card.face = "BACK"
+            card.slot = idx
             self.cards.append(card)
 
         self.selected_card_index = None
@@ -363,8 +184,8 @@ class CardGame:
         self.state_start_time = pygame.time.get_ticks()
         self.last_shuffle_swap = self.state_start_time
         self.is_swapping = False
+        self.resize((self.w, self.h))
 
-    # ---------- SHOW BACKS UPDATE ----------
     def update_show_backs(self):
         """Advance to shuffling after the 10-second observation period."""
         elapsed = pygame.time.get_ticks() - self.state_start_time
@@ -377,40 +198,25 @@ class CardGame:
             self.is_swapping = False
             self.message = "Shuffling... try to follow the red card!"
 
-    # ---------- SHUFFLE UPDATE ----------
     def update_shuffle(self):
         """Animate random pair swaps and transition to card selection."""
         now = pygame.time.get_ticks()
         elapsed = now - self.state_start_time
 
         if self.is_swapping:
-            t = (now - self.swap_start_time) / self.swap_duration
-            if t >= 1.0:
-                self.cards[self.swap_i].rect = self.swap_rect_i_end
-                self.cards[self.swap_j].rect = self.swap_rect_j_end
+            progress = min(1, (now - self.swap_start_time) / self.swap_duration)
+            self._position_swap(progress)
+            if progress >= 1:
+                self.cards[self.swap_i].slot, self.cards[self.swap_j].slot = self.swap_slots[1], self.swap_slots[0]
                 self.is_swapping = False
                 self.last_shuffle_swap = now
-            else:
-                def lerp(a, b, u):
-                    return a + (b - a) * u
-
-                x_i = lerp(self.swap_rect_i_start.x, self.swap_rect_i_end.x, t)
-                y_i = lerp(self.swap_rect_i_start.y, self.swap_rect_i_end.y, t)
-                self.cards[self.swap_i].rect.x = int(x_i)
-                self.cards[self.swap_i].rect.y = int(y_i)
-
-                x_j = lerp(self.swap_rect_j_start.x, self.swap_rect_j_end.x, t)
-                y_j = lerp(self.swap_rect_j_start.y, self.swap_rect_j_end.y, t)
-                self.cards[self.swap_j].rect.x = int(x_j)
-                self.cards[self.swap_j].rect.y = int(y_j)
-        else:
-            if now - self.last_shuffle_swap >= self.shuffle_interval:
-                self.swap_two_cards()
+        elif now - self.last_shuffle_swap >= self.shuffle_interval and elapsed < 10_000:
+            self.swap_two_cards()
 
         if elapsed >= 10_000:
             if self.is_swapping:
-                self.cards[self.swap_i].rect = self.swap_rect_i_end
-                self.cards[self.swap_j].rect = self.swap_rect_j_end
+                self._position_swap(1)
+                self.cards[self.swap_i].slot, self.cards[self.swap_j].slot = self.swap_slots[1], self.swap_slots[0]
                 self.is_swapping = False
 
             if self.shuffle_channel is not None and self.shuffle_channel.get_busy():
@@ -430,39 +236,69 @@ class CardGame:
         self.swap_j = j
         self.swap_start_time = pygame.time.get_ticks()
         self.is_swapping = True
+        self.swap_slots = (self.cards[i].slot, self.cards[j].slot)
 
-        if self.snd_shuffle is not None and self.shuffle_channel is not None:
-            self.shuffle_channel.stop()
-            self.shuffle_channel.play(self.snd_shuffle, maxtime=self.swap_duration)
+        self.play_sound('shuffle')
 
         self.swap_rect_i_start = self.cards[i].rect.copy()
         self.swap_rect_j_start = self.cards[j].rect.copy()
         self.swap_rect_i_end = self.cards[j].rect.copy()
         self.swap_rect_j_end = self.cards[i].rect.copy()
 
-    # ---------- CHOOSE UPDATE / EVENTS ----------
-    def update_choose(self):
-        """Resolve a timeout as a loss when no card is selected in time."""
-        elapsed = pygame.time.get_ticks() - self.state_start_time
-        if elapsed >= 10_000 and self.selected_card_index is None:
-            self.resolve_round(None)
+    def resize(self, size):
+        self.w, self.h = size
+        self.layout = compute_layout(size, self.state)
+        self.resources = self.theme.for_size(size)
+        self.name_input_rect = self.layout.get('name_input')
+        for card in self.cards:
+            card.rect = self.layout['card_' + str(card.slot)].copy()
+        if self.is_swapping:
+            now = self.pause_start if self.state == STATE_PAUSE else pygame.time.get_ticks()
+            self._position_swap(min(1, (now - self.swap_start_time) / self.swap_duration))
 
-    def handle_choose_event(self, event):
-        """Resolve the round when the player clicks one of the cards."""
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if self.selected_card_index is not None:
-                return
-            pos = event.pos
-            for idx, c in enumerate(self.cards):
-                if c.rect.collidepoint(pos):
-                    self.selected_card_index = idx
-                    self.selected_card_rect = c.rect.copy()
-                    self.resolve_round(idx)
-                    break
+    def _position_swap(self, progress):
+        first, second = (self.layout['card_' + str(slot)] for slot in self.swap_slots)
+        eased = progress * progress * (3 - 2 * progress)
+        arc = math.sin(math.pi * progress) * min(36, self.h * .05)
+        for idx, start, end, direction in [(self.swap_i, first, second, -1), (self.swap_j, second, first, 1)]:
+            rect = start.copy()
+            rect.x = round(start.x + (end.x-start.x)*eased)
+            rect.y = round(start.y + arc*direction)
+            self.cards[idx].rect = rect
 
-    # ---------- RESOLVE ROUND ----------
+    def pause(self, now_ms):
+        if self.state not in (STATE_SHOW_BACKS, STATE_SHUFFLE, STATE_CHOOSE):
+            return
+        self.state_before_pause = self.state
+        self.pause_start = now_ms
+        self.state = STATE_PAUSE
+        if pygame.mixer.get_init():
+            pygame.mixer.pause()
+
+    def resume(self, now_ms):
+        if self.state != STATE_PAUSE or self.state_before_pause is None:
+            return
+        duration = now_ms - self.pause_start
+        self.state_start_time += duration
+        if self.current_round_start_time is not None:
+            self.current_round_start_time += duration
+        self.swap_start_time += duration
+        self.last_shuffle_swap += duration
+        self.state = self.state_before_pause
+        self.state_before_pause = None
+        if pygame.mixer.get_init():
+            pygame.mixer.unpause()
+
     def resolve_round(self, index):
         """Resolve win/loss, update balance, persist the round, and choose the next state."""
+        if self.state != STATE_CHOOSE or self.round_result is not None:
+            return
+        if index is not None and (type(index) is not int or not 0 <= index < len(self.cards)):
+            return
+        if pygame.time.get_ticks() - self.state_start_time >= 10_000:
+            index = None
+        self.selected_card_index = index
+        self.selected_card_rect = self.cards[index].rect.copy() if index is not None else None
         for c in self.cards:
             c.face = "BACK"
 
@@ -473,10 +309,8 @@ class CardGame:
             duration_sec = 0.0
         self.total_time_played += duration_sec
 
-        mult = self.bet.turbo
-        stake = self.bet.stake()
-        if stake > self.user.balance:
-            stake = self.user.balance
+        mult = self.round_multiplier
+        stake = self.round_stake
 
         # find red card index
         red_index = None
@@ -495,9 +329,7 @@ class CardGame:
             loss = self.user.apply_loss(stake)   # balance -= stake
             self.message = f"Time's up! You lose {loss}$ (x{mult})."
 
-            if self.snd_lose is not None and self.result_channel is not None:
-                self.result_channel.stop()
-                self.result_channel.play(self.snd_lose)
+            self.play_sound('lose')
 
         else:
             chosen = self.cards[index]
@@ -508,9 +340,7 @@ class CardGame:
                 profit = self.user.apply_win(stake)  # balance += stake
                 self.message = f"Well done! Red card! Profit: +{profit}$ (x{mult})."
 
-                if self.snd_win is not None and self.result_channel is not None:
-                    self.result_channel.stop()
-                    self.result_channel.play(self.snd_win)
+                self.play_sound('win')
 
             else:
                 # ---------- LOSE ----------
@@ -519,16 +349,14 @@ class CardGame:
                 loss = self.user.apply_loss(stake)   # balance -= stake
                 self.message = f"Missed it, that wasn't the red card. Loss: {loss}$ (x{mult})."
 
-                if self.snd_lose is not None and self.result_channel is not None:
-                    self.result_channel.stop()
-                    self.result_channel.play(self.snd_lose)
+                self.play_sound('lose')
 
         if self.user.balance < 0:
             self.user.balance = 0
 
         round_entry = {
             "round": len(self.round_history) + 1,
-            "bet": self.bet.amount,
+            "bet": self.round_bet,
             "mult": mult,
             "stake": stake,
             "result": self.round_result,
@@ -539,6 +367,9 @@ class CardGame:
             "timestamp": time.time(),
             "player": self.user.name or ""
         }
+        round_entry["timeout"] = index is None
+        round_entry["difficulty"] = self.round_difficulty
+        self.consecutive_wins = self.consecutive_wins + 1 if self.round_result == "WIN" else 0
         self.round_history.append(round_entry)
 
         self.global_history.append(round_entry)
@@ -553,140 +384,183 @@ class CardGame:
             self.state = STATE_RESULT
 
         self.state_start_time = pygame.time.get_ticks()
+    def set_state(self, state):
+        self.state = state
+        self.focus_action = None
+        self.hover_action = None
+        self.resize((self.w,self.h))
+        if state != STATE_MENU:
+            self.active_input = False
+            pygame.key.stop_text_input()
+            menu_input._remove_browser_field()
 
-
-    # ---------- RESULT / GAME OVER EVENTS ----------
-    def handle_result_event(self, event):
-        """Handle next-round, menu, and quit actions from the result screen."""
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if self.result_channel is not None and self.result_channel.get_busy():
-                self.result_channel.fadeout(150)
-
-            pos = event.pos
-
-            if self.state == STATE_RESULT:
-                if self.btn_continue.collidepoint(pos) and self.user.balance >= self.bet.min:
-                    self.state = STATE_BET
-                elif self.btn_main_menu.collidepoint(pos):
-                    self.reset_game()
-                    self.state = STATE_MENU
-                elif self.btn_exit.collidepoint(pos):
-                    pygame.quit()
-                    import sys
-                    sys.exit()
-
-            elif self.state == STATE_GAME_OVER:
-                if self.btn_main_menu.collidepoint(pos):
-                    self.reset_game()
-                    self.state = STATE_MENU
-                elif self.btn_exit.collidepoint(pos):
-                    pygame.quit()
-                    import sys
-                    sys.exit()
-
-    # ---------- RESET ----------
     def reset_game(self):
-        """Reset session-level player, bet, round, and timer state."""
-        self.user.reset()
-        self.bet.amount = max(self.bet.min, min(self.bet.max, 10))
-        self.bet.turbo = 1
-
+        self.bet.amount, self.bet.turbo = 10,1
         self.selected_card_index = None
         self.selected_card_rect = None
         self.round_result = None
         self.round_history.clear()
-        self.total_time_played = 0.0
+        self.total_time_played = 0
+        self.welcome_balance_granted_now = False
+        self.consecutive_wins = 0
+        self.cards = []
+        self.is_swapping = False
 
-    # ---------- GLOBAL EVENTS ----------
-    def handle_event(self, event):
-        """Dispatch input to the handler associated with the active state."""
-        # Pause toggle
-        if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
-            if self.state == STATE_PAUSE and self.state_before_pause is not None:
-                pause_duration = pygame.time.get_ticks() - self.pause_start
+    def enabled(self, action):
+        if action == 'continue':
+            return 3 <= len(self.user.name) <= self.player_name_max_len
+        if action == 'start':
+            return self.bet.is_valid(self.user.balance)
+        if action.startswith('turbo_'):
+            return self.bet.amount * int(action[-1]) <= self.user.balance
+        if action == 'plus':
+            return (self.bet.amount+5)*self.bet.turbo <= self.user.balance and self.bet.amount+5 <= self.bet.max
+        if action == 'minus':
+            return self.bet.amount > self.bet.min
+        return True
 
-                if self.state_before_pause in (STATE_SHOW_BACKS, STATE_SHUFFLE, STATE_CHOOSE, STATE_RESULT):
-                    self.state_start_time += pause_duration
-                    if self.state_before_pause == STATE_SHUFFLE and self.is_swapping:
-                        self.swap_start_time += pause_duration
-                        self.last_shuffle_swap += pause_duration
-
-                self.state = self.state_before_pause
-                self.state_before_pause = None
-
-            elif self.state in (
-                STATE_SHOW_BACKS, STATE_SHUFFLE, STATE_CHOOSE,
-                STATE_RESULT, STATE_BET, STATE_MENU, STATE_START
-            ):
-                self.state_before_pause = self.state
-                self.pause_start = pygame.time.get_ticks()
-                self.state = STATE_PAUSE
-
+    def activate(self, action):
+        if not self.enabled(action):
             return
+        if action == 'play':
+            self.set_state(STATE_MENU)
+        elif action in ('help','settings'):
+            self.overlay_return = self.state
+            self.set_state(action.upper())
+        elif action == 'back':
+            self.set_state(self.overlay_return if self.state in ('HELP','SETTINGS') else STATE_START)
+        elif action.startswith('avatar_'):
+            self.user.avatar_index = int(action[-1])
+        elif action == 'continue':
+            self.activate_profile()
+            self.set_state(STATE_BET if self.user.balance >= self.bet.min else STATE_GAME_OVER)
+        elif action == 'menu':
+            self.reset_game()
+            self.set_state(STATE_MENU)
+        elif action in ('easy','normal','expert'):
+            self.apply_settings(Settings(action,self.settings.sound_enabled,self.settings.volume))
+        elif action == 'sound':
+            self.apply_settings(Settings(self.settings.difficulty,not self.settings.sound_enabled,self.settings.volume))
+            self.enable_audio()
+        elif action in ('volume_down','volume_up'):
+            change = .1 if action == 'volume_up' else -.1
+            self.apply_settings(Settings(self.settings.difficulty,self.settings.sound_enabled,round(self.settings.volume+change,1)))
+        elif action.startswith('turbo_'):
+            self.bet.set_turbo(int(action[-1]))
+        elif action == 'minus':
+            self.bet.decrease()
+        elif action == 'plus':
+            self.bet.increase(balance=self.user.balance//self.bet.turbo)
+        elif action == 'start':
+            self.start_round()
+            self.set_state(self.state)
+        elif action == 'next':
+            self.bet.amount,self.bet.turbo=10,1
+            self.set_state(STATE_BET)
+        elif action == 'pause':
+            self.pause(pygame.time.get_ticks())
+            self.set_state(self.state)
+        elif action == 'resume':
+            self.resume(pygame.time.get_ticks())
+            self.set_state(self.state)
+        elif action == 'quit':
+            if sys.platform == 'emscripten':
+                self.reset_game()
+                self.set_state(STATE_START)
+            else:
+                self.running=False
 
-        # State-specific events
-        if self.state == STATE_START:
-            self.handle_start_event(event)
-        elif self.state == STATE_MENU:
+    def _click(self, pos):
+        if self.state == STATE_MENU and self.name_input_rect and self.name_input_rect.collidepoint(pos):
+            self.active_input = True
+            self.focus_action = 'name'
+            pygame.key.start_text_input()
+            field = menu_input._ensure_browser_field(self)
+            if field is not None:
+                field.focus()
+            return
+        for key,rect in self.layout.items():
+            if key.startswith('btn_') and rect.collidepoint(pos):
+                self.active_input=False
+                self.activate(key[4:])
+                return
+        if self.state == STATE_CHOOSE:
+            for index,card in enumerate(self.cards):
+                if card.rect.collidepoint(pos):
+                    self.resolve_round(index)
+                    self.set_state(self.state)
+                    return
+
+    def handle_menu_event(self,event):
+        if event.type == pygame.TEXTINPUT and self.active_input:
+            text=''.join(c for c in event.text if c.isprintable())
+            self.user.nickname=(self.user.nickname+text)[:self.player_name_max_len]
+        elif event.type == pygame.KEYDOWN and self.active_input:
+            if event.key == pygame.K_BACKSPACE:
+                self.user.nickname=self.user.nickname[:-1]
+            elif event.key == pygame.K_RETURN:
+                self.activate('continue')
+
+    def handle_event(self,event):
+        if event.type == pygame.QUIT:
+            self.running=False
+            return
+        if event.type == pygame.WINDOWFOCUSLOST:
+            self.pause(pygame.time.get_ticks())
+            self.resize((self.w,self.h))
+            return
+        if event.type in (pygame.MOUSEBUTTONDOWN,pygame.FINGERDOWN,pygame.KEYDOWN):
+            self.enable_audio()
+        menu_input._sync_browser_value(self)
+        if event.type == pygame.MOUSEMOTION:
+            self.hover_action = next((k[4:] for k,r in self.layout.items() if k.startswith('btn_') and r.collidepoint(event.pos)),None)
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and not getattr(event,'touch',False):
+            self._click(event.pos)
+        elif event.type == pygame.FINGERDOWN:
+            self._click((round(event.x*self.w),round(event.y*self.h)))
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_TAB:
+                actions = (['name'] if self.state == STATE_MENU else []) + [key[4:] for key in self.layout if key.startswith('btn_') and self.enabled(key[4:])]
+                if actions:
+                    direction=-1 if getattr(event,'mod',0)&pygame.KMOD_SHIFT else 1
+                    current=actions.index(self.focus_action) if self.focus_action in actions else (-1 if direction==1 else 0)
+                    self.focus_action=actions[(current+direction)%len(actions)]
+                    self.active_input=self.focus_action=='name'
+                    if self.active_input:
+                        pygame.key.start_text_input()
+                        field=menu_input._ensure_browser_field(self)
+                        if field is not None: field.focus()
+                return
+            if self.state==STATE_MENU and self.active_input:
+                self.handle_menu_event(event)
+                return
+            if event.key==pygame.K_RETURN and self.focus_action:
+                self.activate(self.focus_action)
+            elif event.key==pygame.K_ESCAPE and self.state in ('HELP','SETTINGS'):
+                self.activate('back')
+            elif event.key==pygame.K_SPACE:
+                self.activate('resume' if self.state==STATE_PAUSE else 'pause')
+            elif self.state==STATE_CHOOSE and event.key in (pygame.K_1,pygame.K_2,pygame.K_3):
+                card=sorted(self.cards,key=lambda c:c.rect.centerx)[event.key-pygame.K_1]
+                self.resolve_round(self.cards.index(card))
+                self.set_state(self.state)
+        elif event.type==pygame.TEXTINPUT and self.state==STATE_MENU:
             self.handle_menu_event(event)
-        elif self.state == STATE_BET:
-            self.handle_bet_event(event)
-        elif self.state == STATE_CHOOSE:
-            self.handle_choose_event(event)
-        elif self.state in (STATE_RESULT, STATE_GAME_OVER):
-            self.handle_result_event(event)
 
-    # ---------- UPDATE & DRAW ----------
     def update(self):
-        """Advance time-dependent logic for the active state."""
-        if self.state == STATE_PAUSE:
-            return
-
-        if self.state == STATE_SHOW_BACKS:
+        previous=self.state
+        if self.state==STATE_SHOW_BACKS:
             self.update_show_backs()
-        elif self.state == STATE_SHUFFLE:
+        elif self.state==STATE_SHUFFLE:
             self.update_shuffle()
-        elif self.state == STATE_CHOOSE:
-            self.update_choose()
+        elif self.state==STATE_CHOOSE and pygame.time.get_ticks()-self.state_start_time >= 10_000:
+            self.resolve_round(None)
+        if self.state!=previous:
+            self.set_state(self.state)
+        if self.state==STATE_MENU:
+            menu_input.update_native_field(self)
+        else:
+            menu_input._remove_browser_field()
 
     def draw(self):
-        """Delegate rendering to dashboard.py for the active state."""
-        if self.state == STATE_PAUSE and self.state_before_pause is not None:
-            # Draw the underlying state
-            if self.state_before_pause == STATE_START:
-                db.draw_start_screen(self)
-            elif self.state_before_pause == STATE_MENU:
-                db.draw_menu(self)
-            elif self.state_before_pause == STATE_BET:
-                db.draw_bet_screen(self)
-            elif self.state_before_pause == STATE_SHOW_BACKS:
-                db.draw_show_backs(self)
-            elif self.state_before_pause == STATE_SHUFFLE:
-                db.draw_shuffle(self)
-            elif self.state_before_pause == STATE_CHOOSE:
-                db.draw_choose(self)
-            elif self.state_before_pause == STATE_RESULT:
-                db.draw_result(self)
-            elif self.state_before_pause == STATE_GAME_OVER:
-                db.draw_game_over(self)
-
-            db.draw_pause_overlay(self)
-            return
-
-        if self.state == STATE_START:
-            db.draw_start_screen(self)
-        elif self.state == STATE_MENU:
-            db.draw_menu(self)
-        elif self.state == STATE_BET:
-            db.draw_bet_screen(self)
-        elif self.state == STATE_SHOW_BACKS:
-            db.draw_show_backs(self)
-        elif self.state == STATE_SHUFFLE:
-            db.draw_shuffle(self)
-        elif self.state == STATE_CHOOSE:
-            db.draw_choose(self)
-        elif self.state == STATE_RESULT:
-            db.draw_result(self)
-        elif self.state == STATE_GAME_OVER:
-            db.draw_game_over(self)
-
+        dashboard.draw_screen(self,self.layout,self.resources)

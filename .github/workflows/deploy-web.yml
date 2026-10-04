@@ -2,7 +2,8 @@ name: Deploy Python CardGame to GitHub Pages
 
 on:
   push:
-    branches: [main]
+    branches: [main, "feat/**"]
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -11,7 +12,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -31,10 +32,11 @@ jobs:
       - name: Run tests
         run: python -m unittest discover -s tests -v
       - name: Compile Python sources
-        run: python -m py_compile src/main.py src/game.py src/dashboard.py src/user.py src/bet.py
+        run: python -m compileall -q src
       - name: Build browser bundle
         run: bash scripts/build_web.sh
       - uses: actions/configure-pages@v5
+        if: github.ref == 'refs/heads/main'
       - uses: actions/upload-pages-artifact@v3
         with:
           path: src/build/web

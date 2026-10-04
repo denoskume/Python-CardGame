@@ -55,11 +55,13 @@ class HistoryTableTests(unittest.TestCase):
             ("1", "Drama", "120$", "3W / 2L", "105$", "+25$"),
         )
 
-    def test_main_installs_history_table(self):
-        source = Path("src/main.py").read_text(encoding="utf-8")
-        self.assertIn("history_table.install(db)", source)
-        module = Path("src/history_table.py").read_text(encoding="utf-8")
-        self.assertIn('"Last attempts (all sessions combined):"', module)
+
+    def test_distinct_sessions_do_not_disappear(self):
+        from history_table import aggregate_players
+        rows=[dict(round=1,player='Denos',bet=10,stake=10,result=result,balance_after=balance,timestamp=stamp)
+              for result,balance,stamp in [('WIN',40,1),('LOSE',30,2),('WIN',40,3)]]
+        row=aggregate_players(rows)[0]
+        self.assertEqual((row['wins'],row['losses'],row['goal']),(2,1,10))
 
 
 if __name__ == "__main__":

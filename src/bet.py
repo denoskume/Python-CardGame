@@ -31,4 +31,7 @@ class Bet:
 
     def is_valid(self, balance: int) -> bool:
         """Check that bet is inside limits and affordable."""
-        return self.min <= self.amount <= self.max and self.amount <= balance
+        return (all(type(value) is int for value in (self.amount, self.turbo, balance))
+                and self.turbo in (1, 2, 3)
+                and self.min <= self.amount <= self.max
+                and self.stake() <= balance)
