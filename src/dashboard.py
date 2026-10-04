@@ -242,18 +242,42 @@ def settings_screen(game,layout,fonts):
 
 
 def help_screen(game,layout,fonts):
-    title(game,fonts,'How to play')
+    scale=2
+
+    def help_text(value,pos,kind='small',color=TEXT,center=False):
+        surface=fonts[kind].render(str(value),True,color)
+        surface=pygame.transform.smoothscale(surface,(surface.get_width()*scale,surface.get_height()*scale))
+        rect=surface.get_rect(center=pos) if center else surface.get_rect(topleft=pos)
+        game.screen.blit(surface,rect)
+        return rect
+
+    def help_wrapped(value,x,y,width,kind='small',color=MUTED):
+        words=value.split();line=''
+        for word in words:
+            candidate=(line+' '+word).strip()
+            if fonts[kind].size(candidate)[0]*scale>width and line:
+                help_text(line,(x,y),kind,color)
+                y+=fonts[kind].get_linesize()*scale+5
+                line=word
+            else:
+                line=candidate
+        if line:
+            help_text(line,(x,y),kind,color)
+            y+=fonts[kind].get_linesize()*scale+5
+        return y
+
+    help_text('How to play',(game.w//2,108),'title',TEXT,True)
     x=layout['content'].x+10;width=layout['content'].width-20
     y=150 if game.h>=500 else 143
     items=[('01  OBSERVE','Remember the red card. You have 10 seconds.'),
            ('02  FOLLOW','The cards turn over and exchange positions for 10 seconds.'),
            ('03  CHOOSE','Select red before the 10-second timer ends. Red wins your stake; a miss or timeout loses it.')]
     for heading,body in items:
-        text(game.screen,fonts,heading,(x,y),'tiny',GOLD);y+=22
-        y=wrapped(game.screen,fonts,body,x,y,width,'small')+12
+        help_text(heading,(x,y),'tiny',GOLD);y+=32
+        y=help_wrapped(body,x,y,width,'small')+10
     if game.h>=500:
-        y=wrapped(game.screen,fonts,'Mouse or touch to play. Tab + Enter for controls. 1 / 2 / 3 choose a card. Space pauses an active round.',x,y+5,width,'small')
-        wrapped(game.screen,fonts,'Fictitious credits only. Profiles and history stay on this device; clearing browser data removes them.',x,y+12,width,'small')
+        y=help_wrapped('Mouse or touch to play. Tab + Enter for controls. 1 / 2 / 3 choose a card. Space pauses an active round.',x,y+4,width,'small')
+        help_wrapped('Fictitious credits only. Profiles and history stay on this device; clearing browser data removes them.',x,y+8,width,'small')
 
 
 def game_over(game,layout,fonts):
