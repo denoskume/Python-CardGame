@@ -269,7 +269,9 @@ def game_over(game,layout,fonts):
 
 
 def draw_screen(game,layout,resources):
-    if not pygame.font.get_init():
+    try:
+        resources['fonts']['small'].render('', True, TEXT)
+    except pygame.error:
         pygame.font.init()
         game.theme.cache.clear()
         resources = game.theme.for_size((game.w, game.h))

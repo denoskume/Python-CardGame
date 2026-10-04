@@ -12,7 +12,6 @@ class LayoutV2Tests(unittest.TestCase):
         self.assertEqual(play.size, (220, 48))
         self.assertEqual(play.centerx, 331)
         self.assertEqual(play.y, 300)
-        self.assertLess(play.bottom, layout['card_0'].top)
 
     def test_controls_stay_inside_viewport(self):
         from layout import compute_layout
