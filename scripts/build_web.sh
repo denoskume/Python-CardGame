@@ -16,7 +16,9 @@ done
 rm -f "$WEB_SRC/assets/"*.mp3
 sed -i 's/\.mp3"/\.ogg"/g' "$WEB_SRC/game.py"
 
-python -m pygbag --build --no_opt "$WEB_SRC"
+# Pygbag 0.9.3's legacy BrowserFS CDN file was removed in 2026.
+# Archive mode packages the application for the runtime ramdisk instead.
+python -m pygbag --archive --no_opt "$WEB_SRC/main.py"
 
 mkdir -p src/build
 cp -R "$WEB_SRC/build/web" src/build/web
@@ -30,4 +32,4 @@ test -f src/build/web/index.html
 grep -q 'full-viewport-shell' src/build/web/index.html
 grep -q 'full-viewport-runtime' src/build/web/index.html
 
-printf 'Web build ready with OGG audio and full-viewport shell: %s\n' "src/build/web"
+printf 'Web archive build ready with OGG audio and full-viewport shell: %s\n' "src/build/web"
