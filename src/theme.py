@@ -12,6 +12,23 @@ GREEN=(105,211,170)
 GOLD=(223,185,112)
 
 
+def _font(path, size, bold=False):
+    """Load the bundled font, falling back when SDL_ttf cannot render it."""
+    try:
+        font=pygame.font.Font(str(path),size)
+        # Construction can succeed even when SDL_ttf later returns a NULL
+        # glyph surface. Probe one glyph now so the fallback is deterministic.
+        probe=font.render('A',True,TEXT)
+        if probe.get_width()>0 and probe.get_height()>0:
+            return font
+    except (pygame.error, OSError, ValueError):
+        pass
+
+    font=pygame.font.Font(None,size)
+    font.set_bold(bool(bold))
+    return font
+
+
 class ThemeResources:
     def __init__(self):
         self.cache={}
@@ -23,7 +40,7 @@ class ThemeResources:
             return self.cache[size]
         w,h=size
         compact=w<600 or h<500
-        fonts={name:pygame.font.Font(str(self.assets/('ui-bold.ttf' if bold else 'ui-regular.ttf')),px)
+        fonts={name:_font(self.assets/('ui-bold.ttf' if bold else 'ui-regular.ttf'),px,bold)
                for name,px,bold in [('hero',30 if compact else 48,True),('title',24 if compact else 32,True),
                                    ('body',15 if compact else 18,False),('small',12 if compact else 14,False),
                                    ('tiny',10 if compact else 12,True),('number',32 if compact else 46,True)]}
