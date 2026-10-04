@@ -54,7 +54,8 @@ class WebShellTests(unittest.TestCase):
             index=Path(tmp)/'index.html';index.write_text(SAMPLE_HTML)
             patch(index)
             parser=Elements();parser.feed(index.read_text())
-            self.assertTrue({'cardgame-loading','cardgame-load-status','cardgame-retry'} <= parser.ids)
+            self.assertTrue({'cardgame-loading','cardgame-load-status','cardgame-start','cardgame-retry'} <= parser.ids)
+            self.assertIn('activateCardGame()', index.read_text(encoding='utf-8'))
 
 
 if __name__ == "__main__":

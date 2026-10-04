@@ -54,17 +54,27 @@ window.addEventListener('load', () => setTimeout(syncViewportFramebuffer, 0));
 
 
 LOADING_SHELL = """
-<section id="cardgame-loading" role="status" style="position:fixed;inset:0;display:grid;place-content:center;text-align:center;background:#0f1217;color:#f1eee7;font:18px system-ui;z-index:9000;pointer-events:none">
-  <h1 style="color:#c73647">Rouge gagne, noir perd</h1>
-  <p id="cardgame-load-status">Loading your table… First launch may take a moment.</p>
-  <p style="font-size:14px;color:#99a3b1">Click or tap to activate the game.</p>
-  <button id="cardgame-retry" hidden style="pointer-events:auto;padding:14px;background:#c73647;color:white;border:0;border-radius:8px" onclick="location.reload()">Try again</button>
+<section id="cardgame-loading" role="dialog" aria-label="CardGame start" style="position:fixed;inset:0;display:grid;place-content:center;text-align:center;background:#0f1217;color:#f1eee7;font:18px system-ui;z-index:9000">
+  <div style="min-width:min(86vw,360px);padding:34px 30px;border:1px solid #303946;border-radius:20px;background:#171c24;box-shadow:0 20px 60px #0008">
+    <h1 style="margin:0 0 12px;color:#e0aa54;font-size:22px">Rouge gagne, noir perd</h1>
+    <p id="cardgame-load-status" style="margin:0 0 22px;color:#aab4c2;font-size:14px">Loading your table… First launch may take a moment.</p>
+    <button id="cardgame-start" type="button" style="display:inline-flex;align-items:center;justify-content:center;gap:10px;min-width:210px;padding:14px 24px;background:linear-gradient(180deg,#dc4658,#a92439);color:#fff;border:1px solid #f07784;border-radius:12px;box-shadow:0 8px 18px #7f1d2d88;font:700 16px system-ui;cursor:pointer" onclick="activateCardGame()"><span aria-hidden="true">▶</span> START GAME</button>
+    <button id="cardgame-retry" hidden type="button" style="margin-top:14px;padding:10px 18px;background:transparent;color:#e0aa54;border:1px solid #596779;border-radius:10px;font:600 14px system-ui;cursor:pointer" onclick="location.reload()">Try again</button>
+  </div>
 </section>
 <script>
+function activateCardGame() {
+  window.__cardgameStarted = true;
+  const overlay=document.getElementById('cardgame-loading');
+  if (overlay) overlay.remove();
+  const canvas=document.getElementById('canvas');
+  if (canvas) { canvas.focus(); canvas.dispatchEvent(new PointerEvent('pointerdown', {bubbles:true})); }
+}
 function cardgameLoadFailed() {
   const overlay=document.getElementById('cardgame-loading');
   if (overlay && !overlay.hidden) {
     document.getElementById('cardgame-load-status').textContent='The game could not finish loading. Check your connection and try again.';
+    document.getElementById('cardgame-start').hidden=true;
     document.getElementById('cardgame-retry').hidden=false;
   }
 }
