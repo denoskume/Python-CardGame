@@ -1,0 +1,43 @@
+name: Restore original ALPRO V1 report screenshots
+
+on:
+  push:
+    paths:
+      - .github/workflows/import-v1-figures.yml
+
+permissions:
+  contents: write
+
+jobs:
+  restore-figures:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Extract authentic screenshots from the 2025 report
+        run: |
+          python -m pip install --quiet pymupdf Pillow
+          curl --fail --location --silent --show-error \
+            https://raw.githubusercontent.com/denoskume/Python-CardGame/5ad01c265d46e0bbf7561586480a21c60f73dc70/docs/CardGame_Report.pdf \
+            --output /tmp/alpro-v1-report.pdf
+          python scripts/extract_v1_report_figures.py \
+            --input /tmp/alpro-v1-report.pdf \
+            --out versions/v1/docs/figures/
+          test -s versions/v1/docs/figures/alpro-v1-observation.webp
+          test -s versions/v1/docs/figures/alpro-v1-sequence-round.webp
+      - name: Commit V1 report figures without modifying the game
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add versions/v1/docs/figures/
+          if git diff --cached --quiet; then
+            echo "All V1 figures are already present"
+            exit 0
+          fi
+          git commit -m "docs(v1): restore ALPRO report screenshots and diagrams"
+          git push origin HEAD:main
