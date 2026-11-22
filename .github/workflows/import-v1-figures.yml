@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - .github/workflows/import-v1-figures.yml
+      - scripts/extract_v1_report_figures.py
 
 permissions:
   contents: write

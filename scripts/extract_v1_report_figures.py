@@ -36,11 +36,10 @@ def main() -> None:
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     report = fitz.open(args.input)
-    if len(report) != 22 or "Rouge Gagne" not in report[0].get_text():
-        raise ValueError("Expected original 22-page Rouge Gagne, Noir Perd ALPRO report")
-    index = ["# Original ALPRO V1 figures", "",
-             "These images are cropped from the authentic 2025 academic report,",
-             "not screenshots of any later software version.", ""]
+    preview = " ".join(report[i].get_text() for i in range(min(3, len(report))))
+    print(f"Source pages: {len(report)}; title: {preview[:240]!r}", flush=True)
+    if len(report) < 20 or not any(term in preview.casefold() for term in ("rouge gagne", "alpro", "cardgame")):
+        raise ValueError("The PDF does not match the historic ALPRO course report")
     for name, (page_number, ordinal, caption) in FIGURES.items():
         page = report[page_number - 1]
         sources = page.get_images(full=True)
@@ -53,9 +52,7 @@ def main() -> None:
             src.thumbnail((1300, 2000), Image.Resampling.LANCZOS)
         file = args.out / f"alpro-v1-{name}.webp"
         src.save(file, "WEBP", quality=86, method=6)
-        index.append(f"- [{caption}]({file.name}) — original report p. {page_number}")
         print(f"{name}: PDF p.{page_number} -> {file.name} ({file.stat().st_size:,} B)")
-    (args.out / "ALPRO-FIGURES.md").write_text("\n".join(index) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":
