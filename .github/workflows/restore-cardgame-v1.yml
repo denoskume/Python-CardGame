@@ -1,0 +1,57 @@
+name: Restore original CardGame V1 academic source
+
+on:
+  push:
+    branches:
+      - main
+      - feature/academic-cardgame-v1
+    paths:
+      - 'versions/v1/original-code.zip'
+      - '.github/workflows/restore-cardgame-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  restore-v1:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Verify and restore original V1 source code
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import ast, hashlib, zipfile
+          root = Path("versions/v1")
+          archive = root / "original-code.zip"
+          digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+          expected_digest = "8dddd09fb16537763d3a9a3b98babf6fb8b357359eaf72794908a6712230dba3"
+          assert digest == expected_digest, "Original source ZIP checksum changed"
+          expected_names = {"main.py", "game.py", "dashboard.py", "bet.py", "user.py"}
+          with zipfile.ZipFile(archive) as zf:
+              assert set(zf.namelist()) == expected_names, "Unexpected source list"
+              for name in sorted(expected_names):
+                  content = zf.read(name)
+                  ast.parse(content.decode("utf-8-sig"), filename=name)
+                  (root / "code" / name).parent.mkdir(parents=True, exist_ok=True)
+                  (root / "code" / name).write_bytes(content)
+          for asset in ["avatar1.png","avatar2.png","avatar3.png","card_front.png","card_back_red.png",
+                        "card_back_black.png","card_logo_back.png","card_logo_front.png",
+                        "win.mp3","lose.mp3","shuffle.mp3"]:
+              assert (root / "code" / "assets" / asset).is_file(), f"Missing original asset: {asset}"
+          print("Original ALPRO V1 source and assets validated.")
+          PY
+      - name: Commit unpacked V1 source if it differs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add versions/v1/code/main.py versions/v1/code/game.py versions/v1/code/dashboard.py versions/v1/code/user.py versions/v1/code/bet.py
+          if git diff --cached --quiet; then
+            echo "Original Python files are already identical."
+            exit 0
+          fi
+          git commit -m "chore(v1): publish original 2025 ALPRO Python source"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
