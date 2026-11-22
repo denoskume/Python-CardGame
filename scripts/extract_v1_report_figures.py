@@ -1,59 +1,54 @@
 #!/usr/bin/env python3
-"""Extract genuine V1 ALPRO report figures into individually captioned web images.
-
-Source: the academic CardGame report preserved in Git history (Dec 2025).
-Use --input to provide an original copy of the 22-page PDF.
-"""
+"""Export cropped figures from the original 2025 ALPRO report as web assets."""
 from __future__ import annotations
-
 import argparse
+import hashlib
 import io
 from pathlib import Path
-
 import fitz
-from PIL import Image, ImageOps
+from PIL import Image
 
-# 1-indexed report page, index among images placed on the page.
+# Original report page number (1-indexed) and crop rectangle in PDF points.
 FIGURES = {
-    "uml-classes": (10, 0, "Original UML class architecture"),
-    "er-player-round": (11, 0, "Original player/round ER model"),
-    "sequence-round": (12, 0, "Original complete-round sequence diagram"),
-    "menu": (16, 0, "V1 nickname and avatar selection"),
-    "bet-dashboard": (16, 1, "V1 stake configuration dashboard"),
-    "observation": (17, 0, "V1 red-card observation stage"),
-    "shuffle": (17, 1, "V1 animated card shuffle stage"),
-    "selection": (18, 0, "V1 timed card selection"),
-    "result": (18, 1, "V1 game-over and statistics screen"),
-    "functional-tests": (20, 0, "Functional test cases from the ALPRO report"),
-    "nonfunctional-tests": (20, 1, "Non-functional test plan from the ALPRO report"),
+  'module-overview': (9, (68, 68, 527, 305)),
+  'uml-classes': (10, (90, 108, 506, 647)),
+  'er-player-round': (11, (68, 108, 528, 407)),
+  'sequence-round': (12, (68, 108, 528, 670)),
+  'menu': (16, (112, 145, 482, 400)),
+  'bet-dashboard': (16, (112, 482, 482, 735)),
+  'observation': (17, (112, 108, 482, 340)),
+  'shuffle': (17, (112, 400, 482, 638)),
+  'selection': (18, (112, 108, 482, 346)),
+  'result': (18, (112, 405, 482, 647)),
+  'functional-tests': (20, (68, 145, 528, 400)),
+  'nonfunctional-tests': (20, (68, 459, 528, 655)),
 }
 
+def main():
+  p=argparse.ArgumentParser()
+  p.add_argument('--input',required=True,type=Path)
+  p.add_argument('--out',default=Path('versions/v1/docs/figures'),type=Path)
+  args=p.parse_args()
+  report=fitz.open(args.input)
+  text=' '.join(report[i].get_text() for i in range(min(3,len(report))))
+  print(f'Report pages {len(report)}, title: {text[:170]!r}',flush=True)
+  if len(report)!=22 or 'alpro' not in text.lower():
+    raise RuntimeError('Expected the authentic 22-page ALPRO report')
+  args.out.mkdir(parents=True,exist_ok=True)
+  hashes={}
+  for name,(page_no,box) in FIGURES.items():
+    page=report[page_no-1]
+    clip=fitz.Rect(box)&page.rect
+    pix=page.get_pixmap(matrix=fitz.Matrix(2.5,2.5),clip=clip,alpha=False)
+    img=Image.frombytes('RGB',(pix.width,pix.height),pix.samples)
+    data=io.BytesIO()
+    img.save(data,'WEBP',quality=85,method=6)
+    content=data.getvalue()
+    digest=hashlib.sha256(content).hexdigest()
+    if digest in hashes: raise RuntimeError(f'Duplicate rendered figures {name} & {hashes[digest]}')
+    hashes[digest]=name
+    destination=args.out/f'alpro-v1-{name}.webp'
+    destination.write_bytes(content)
+    print(f'Figure {name}: p{page_no}, {img.size}, {len(content):,}B, {digest[:12]}',flush=True)
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--input", required=True, type=Path)
-    parser.add_argument("--out", default=Path("versions/v1/docs/figures"), type=Path)
-    args = parser.parse_args()
-    args.out.mkdir(parents=True, exist_ok=True)
-    report = fitz.open(args.input)
-    preview = " ".join(report[i].get_text() for i in range(min(3, len(report))))
-    print(f"Source pages: {len(report)}; title: {preview[:240]!r}", flush=True)
-    if len(report) < 20 or not any(term in preview.casefold() for term in ("rouge gagne", "alpro", "cardgame")):
-        raise ValueError("The PDF does not match the historic ALPRO course report")
-    for name, (page_number, ordinal, caption) in FIGURES.items():
-        page = report[page_number - 1]
-        sources = page.get_images(full=True)
-        if len(sources) <= ordinal:
-            raise ValueError(f"Page {page_number} missing image {ordinal}: {name}")
-        image = report.extract_image(sources[ordinal][0])
-        src = Image.open(io.BytesIO(image["image"])).convert("RGB")
-        src = ImageOps.exif_transpose(src)
-        if src.width > 1300:
-            src.thumbnail((1300, 2000), Image.Resampling.LANCZOS)
-        file = args.out / f"alpro-v1-{name}.webp"
-        src.save(file, "WEBP", quality=86, method=6)
-        print(f"{name}: PDF p.{page_number} -> {file.name} ({file.stat().st_size:,} B)")
-
-
-if __name__ == "__main__":
-    main()
+if __name__=='__main__':main()
