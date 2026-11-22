@@ -25,7 +25,7 @@ The academic submission contains figures for:
 
 1. **UML class diagram** showing the class-level architecture.
 2. **ER diagram** for the player and round records.
-3. **SDLC Gantt chart** for design, implementation, testing and documentation.
+3. **SDLC Gantt chart** for design, implementation, testing and documentation. See the [original 2025 Gantt diagram](figures/sdlc-gantt.webp) extracted from the submitted report.
 4. **Sequence diagram** of an end-to-end game round.
 5. **V1 screenshots** for the menu, betting dashboard, observation, shuffle, selection and results.
 

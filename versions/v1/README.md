@@ -39,4 +39,6 @@ The V1 academic report (22 pages) covers requirements, UML class diagram, ER dia
 
 The original V1 animated gameplay demonstration is already available at [docs/cardgame_demo.gif](../../../docs/cardgame_demo.gif).
 
+The [original SDLC Gantt figure](docs/figures/sdlc-gantt.webp) is preserved from the 2025 report, showing the October–December planning, development, testing and documentation sequence.
+
 **V1 and V2 are distinct.** V1 documents the ALPRO academic work of 2025; V2 extends and modernizes the application with browser support and later tests. The [portfolio project page](https://denoskume.github.io/portfolio/#/projects/python-cardgame) explains both versions.
